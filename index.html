@@ -1,0 +1,791 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Обувница PRO</title>
+
+<!-- Early connections to external domains -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="preload" href="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.50.0/dist/umd/supabase.min.js" as="script">
+<link rel="preconnect" href="https://rworuvzsqtkljkjszvrw.supabase.co">
+
+<link href="https://fonts.googleapis.com/css2?family=Geologica:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#6366f1">
+
+<!-- Supabase config (inlined to save a network request) -->
+<script>
+const SUPABASE_URL = 'https://rworuvzsqtkljkjszvrw.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ3b3J1dnpzcXRrbGpranN6dnJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyNzM2OTEsImV4cCI6MjA5Mjg0OTY5MX0.m0nz3p9LPX8apWQcOi-T9q_WjdivwkMiFfS3iH3foig';
+</script>
+<!-- defer: downloads in background, doesn't block page render -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.50.0/dist/umd/supabase.min.js" defer></script>
+</head>
+
+<body>
+<div id="toastBox"></div>
+
+<!-- CONFIRM DIALOG -->
+<div class="conf-ovl" id="confOvl">
+  <div class="conf-box">
+    <div class="conf-icon" id="confIco">❓</div>
+    <div class="conf-title" id="confTtl"></div>
+    <div class="conf-txt" id="confTxt"></div>
+    <div class="conf-btns">
+      <button class="btn btn-outline" onclick="confRes(false)">Отмена</button>
+      <button class="btn btn-danger" id="confOkBtn" onclick="confRes(true)">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- QUICK SELL MODAL -->
+<div class="modal-ovl" id="qsModal">
+  <div class="modal-box">
+    <div class="modal-hdr">
+      <div class="modal-ttl">💰 Быстрая продажа</div>
+      <button class="modal-cls" onclick="closeModal('qsModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="qs-prod-card" id="qsProdCard"></div>
+      <div class="fg fg-2 mb-12">
+        <div class="field">
+          <div class="flbl">Цена продажи ₸ <span class="freq">*</span></div>
+          <input class="inp" type="number" id="qsPrice" placeholder="10000" oninput="calcQS()">
+          <div class="fhint" id="qsPriceHint"></div>
+        </div>
+        <div class="field">
+          <div class="flbl">Кол-во пар</div>
+          <input class="inp" type="number" id="qsQty" value="1" min="1" oninput="calcQS()">
+        </div>
+      </div>
+      <div class="field mb-12">
+        <div class="flbl">Способ оплаты</div>
+        <div class="pay-sel" id="qsPaySel">
+          <div class="pay-opt sel-pay" data-val="Наличные" onclick="selPay(this,'qsPaySel')"><span class="pay-opt-icon">💵</span>Наличные</div>
+          <div class="pay-opt" data-val="Карта" onclick="selPay(this,'qsPaySel')"><span class="pay-opt-icon">💳</span>Карта</div>
+          <div class="pay-opt" data-val="Kaspi" onclick="selPay(this,'qsPaySel')"><span class="pay-opt-icon">📱</span>Kaspi</div>
+          <div class="pay-opt" data-val="В долг" onclick="selPay(this,'qsPaySel')"><span class="pay-opt-icon">🤝</span>В долг</div>
+        </div>
+      </div>
+      <div class="fg fg-2 mb-12">
+        <div class="field">
+          <div class="flbl">Скидка ₸</div>
+          <input class="inp" type="number" id="qsDisc" placeholder="0" oninput="calcQS()">
+        </div>
+        <div class="field">
+          <div class="flbl">Покупатель</div>
+          <input class="inp" type="text" id="qsCust" placeholder="Имя (необяз.)">
+        </div>
+      </div>
+      <div class="field mb-12">
+        <div class="flbl">Заметки</div>
+        <input class="inp" type="text" id="qsNote" placeholder="Торговался...">
+      </div>
+      <div class="sale-sum" id="qsSummary">
+        <div class="ss-lbl">К оплате</div>
+        <div class="ss-total" id="qsTotal">—</div>
+        <!-- Owner only profit display -->
+        <div class="info-row owner-elem" style="display:none">
+          <span class="ir-lbl">👑 Прибыль (только хозяйке видно)</span>
+          <span class="ir-val" id="qsProfit" style="color:var(--gold)">—</span>
+        </div>
+        <div class="info-row owner-elem" style="display:none">
+          <span class="ir-lbl">Маржа %</span>
+          <span class="ir-val" id="qsMargin" style="color:var(--teal)">—</span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('qsModal')">Отмена</button>
+      <button class="btn btn-success btn-lg" id="qsSubmitBtn" onclick="submitQS()">✅ Продано!</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOADING -->
+<div id="loadingPage" style="display:none">
+  <div class="loading-spinner"></div>
+  <div class="loading-txt">Загрузка...</div>
+</div>
+
+<!-- AUTH -->
+<div id="authPage">
+  <div class="auth-box">
+    <div class="auth-brand">
+      <span class="auth-icon">👟</span>
+      <div class="auth-title">Обувница <em>PRO</em></div>
+      <div class="auth-sub">Система учёта обуви · Войди чтобы начать</div>
+    </div>
+    <div class="auth-card">
+      <div class="auth-tabs">
+        <button class="auth-tab active" onclick="switchAuthTab('login',this)">Войти</button>
+        <button class="auth-tab" onclick="switchAuthTab('signup',this)">Регистрация</button>
+      </div>
+      <div class="auth-err" id="authErr"></div>
+
+      <!-- LOGIN -->
+      <div id="loginForm">
+        <div class="auth-field">
+          <div class="auth-lbl">Email</div>
+          <input class="auth-inp" type="email" id="loginEmail" placeholder="email@example.com" autocomplete="email">
+        </div>
+        <div class="auth-field">
+          <div class="auth-lbl">Пароль</div>
+          <input class="auth-inp" type="password" id="loginPw" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doAuthLogin()">
+        </div>
+        <button class="auth-btn" id="loginBtn" onclick="doAuthLogin()">Войти →</button>
+        <button class="auth-link" onclick="doForgotPw()">Забыли пароль?</button>
+      </div>
+
+      <!-- SIGNUP -->
+      <div id="signupForm" style="display:none">
+        <div class="auth-field">
+          <div class="auth-lbl">Имя</div>
+          <input class="auth-inp" type="text" id="signupName" placeholder="Имя пользователя">
+        </div>
+        <div class="auth-field">
+          <div class="auth-lbl">Email</div>
+          <input class="auth-inp" type="email" id="signupEmail" placeholder="email@example.com" autocomplete="email">
+        </div>
+        <div class="auth-field">
+          <div class="auth-lbl">Пароль</div>
+          <input class="auth-inp" type="password" id="signupPw" placeholder="Минимум 6 символов" autocomplete="new-password">
+        </div>
+        <div class="auth-field">
+          <div class="auth-lbl">Роль</div>
+          <div class="role-pick" id="signupRolePick">
+            <button type="button" class="role-opt sel-role" data-val="seller" onclick="pickRole(this)"><span class="role-ico">🧑‍💼</span><span class="role-lbl">Продавщица</span></button>
+            <button type="button" class="role-opt" data-val="owner" onclick="pickRole(this)"><span class="role-ico">👑</span><span class="role-lbl">Хозяйка</span></button>
+          </div>
+        </div>
+        <div class="auth-field" id="ownerCodeField" style="display:none">
+          <div class="auth-lbl">🔑 Код хозяйки</div>
+          <input class="auth-inp" type="password" id="ownerCode" placeholder="Секретный код" autocomplete="off">
+          <div style="font-size:.68rem;color:rgba(255,255,255,.3);margin-top:5px">Только хозяйка знает этот код</div>
+        </div>
+        <button class="auth-btn" id="signupBtn" onclick="doAuthSignup()">Зарегистрироваться →</button>
+      </div>
+
+      <div class="auth-info">Данные хранятся в облаке · Доступ с любого устройства</div>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" style="display:none">
+  <div class="topbar">
+    <div class="tb-brand">👟 <em>Обувница</em> PRO</div>
+    <div class="tb-sync"><div class="sync-dot" id="syncDot"></div><span id="syncTxt">Готово</span></div>
+    <div class="tb-spacer"></div>
+    <button class="tb-refresh" id="refreshBtn" onclick="doRefresh()" title="Обновить данные">🔄</button>
+    <div class="tb-user-name" id="tbUserName"></div>
+    <div class="tb-role" id="tbRole"></div>
+    <button class="tb-logout" onclick="doLogout()">Выйти</button>
+  </div>
+
+  <div class="main-area">
+    <div class="page-wrap">
+
+      <!-- DASHBOARD -->
+      <div class="page active" id="page-dash">
+        <div class="page-hdr">
+          <div>
+            <div class="page-title">📊 Главная</div>
+            <div class="page-sub" id="dashDateLine"></div>
+          </div>
+          <div class="page-actions">
+            <div class="psel" id="dashPsel">
+              <button class="psel-btn active" onclick="setDashPrd('today',this)">Сегодня</button>
+              <button class="psel-btn" onclick="setDashPrd('week',this)">Неделя</button>
+              <button class="psel-btn" onclick="setDashPrd('month',this)">Месяц</button>
+              <button class="psel-btn" onclick="setDashPrd('3m',this)">3 мес.</button>
+              <button class="psel-btn" onclick="setDashPrd('year',this)">Год</button>
+              <button class="psel-btn" onclick="setDashPrd('all',this)">Всё</button>
+            </div>
+          </div>
+        </div>
+        <div class="low-alert" id="lowAlert">
+          <div class="low-alert-title">⚠️ Товар заканчивается</div>
+          <div class="low-alert-items" id="lowAlertItems"></div>
+        </div>
+        <div class="kpi-grid" id="dashKpi"></div>
+        <div class="card mb-16 owner-elem" style="display:none">
+          <div class="card-hdr">
+            <div class="card-title">📈 Выручка за последние 14 дней</div>
+            <div id="dashSparkTotal" class="t-sm t-muted"></div>
+          </div>
+          <div class="card-body">
+            <div class="sparkline" id="dashSparkline"></div>
+            <div class="fc gap-16 mt-8 fw" id="dashSparkLbls" style="font-size:.65rem;color:var(--muted)"></div>
+          </div>
+        </div>
+        <div class="two-col mb-16">
+          <div>
+            <div class="card mb-12">
+              <div class="card-hdr">
+                <div class="card-title">⚡ Последние продажи</div>
+                <button class="btn btn-ghost btn-sm" onclick="navTo('sales')">Все →</button>
+              </div>
+              <div class="tbl-overflow">
+                <table><thead><tr><th>Товар</th><th>Р-р</th><th>Кол</th><th class="owner-elem" style="display:none">Сумма</th><th>Время</th></tr></thead>
+                <tbody id="dashRecent"></tbody></table>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="card mb-12">
+              <div class="card-hdr">
+                <div class="card-title">🚨 Заканчивается</div>
+                <button class="btn btn-ghost btn-sm" onclick="navTo('stock')">Склад →</button>
+              </div>
+              <div class="card-body" id="dashLow"></div>
+            </div>
+            <div class="card owner-elem" style="display:none">
+              <div class="card-hdr"><div class="card-title">🔥 Топ-5 товаров</div></div>
+              <div class="card-body" id="dashTop5"></div>
+            </div>
+          </div>
+        </div>
+        <div class="two-col owner-elem" id="dashOwnerRow" style="display:none">
+          <div class="card">
+            <div class="card-hdr"><div class="card-title">📅 Этот месяц</div></div>
+            <div class="card-body" id="dashMonth"></div>
+          </div>
+          <div class="card">
+            <div class="card-hdr"><div class="card-title">💳 Способы оплаты</div></div>
+            <div class="card-body" id="dashPayBreak"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STOCK -->
+      <div class="page" id="page-stock">
+        <div class="page-hdr">
+          <div>
+            <div class="page-title">🗃 Склад</div>
+            <div class="page-sub" id="stockSub"></div>
+          </div>
+          <div class="page-actions">
+            <button class="btn btn-outline btn-sm owner-elem" style="display:none" onclick="openDeleteModal()">🗑 Удалить</button>
+            <button class="btn btn-primary" onclick="navTo('arrive')">+ Добавить приход</button>
+          </div>
+        </div>
+        <div class="card mb-12">
+          <div class="card-body" style="padding:11px 15px">
+            <div class="fc gap-10 mb-10 fw">
+              <div class="search-wrap" style="flex:1;min-width:180px">
+                <span class="search-ico">🔍</span>
+                <input class="search-inp" type="text" id="stockSearch" placeholder="Поиск..." oninput="renderStock()">
+              </div>
+              <select class="sel" style="width:auto;font-size:.78rem" id="stockSort" onchange="renderStock()">
+                <option value="name">По названию</option><option value="stock">По остатку</option>
+                <option value="price_d">Цена ↓</option><option value="price_a">Цена ↑</option>
+                <option value="date">По дате</option><option value="brand">По бренду</option>
+              </select>
+            </div>
+            <div class="fchips" id="stockTypeChips"></div>
+          </div>
+        </div>
+        <div class="sa-list" id="stockList"></div>
+      </div>
+
+      <!-- ARRIVE -->
+      <div class="page" id="page-arrive">
+        <div class="page-hdr">
+          <div>
+            <div class="page-title">📦 Приход товара</div>
+            <div class="page-sub">Добавить новые позиции на склад</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="clearArrive()">↺ Очистить</button>
+        </div>
+
+        <!-- SELLER: упрощённая форма без цены закупки -->
+        <div id="sellerArriveNote" class="seller-price-note" style="display:none">
+          ℹ️ Ты вводишь только цену продажи. Цену закупки вносит хозяйка отдельно — ты её не видишь.
+        </div>
+
+        <div class="card mb-12">
+          <div class="card-hdr"><div class="card-title">⚡ Быстрые шаблоны</div></div>
+          <div class="card-body">
+            <div class="tpl-chips">
+              <div class="tpl-chip" onclick="applyTpl('kids')">👶 Детская (20–35)</div>
+              <div class="tpl-chip" onclick="applyTpl('women_s')">👠 Женская S (35–40)</div>
+              <div class="tpl-chip" onclick="applyTpl('women_l')">👠 Женская L (38–42)</div>
+              <div class="tpl-chip" onclick="applyTpl('men')">👞 Мужская (40–46)</div>
+              <div class="tpl-chip" onclick="applyTpl('uni')">👟 Унисекс (36–44)</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sl">
+          <div>
+            <div class="card mb-12">
+              <div class="card-hdr"><div class="card-title">📝 Информация о товаре</div></div>
+              <div class="card-body">
+                <div class="fg fg-auto mb-12">
+                  <div class="field">
+                    <div class="flbl">Артикул / Код</div>
+                    <input class="inp" type="text" id="aCode" placeholder="ADI-001">
+                  </div>
+                  <div class="field">
+                    <div class="flbl">Название <span class="freq">*</span></div>
+                    <input class="inp" id="aName" type="text" placeholder="Adidas Superstar" oninput="updatePrev()">
+                  </div>
+                  <div class="field">
+                    <div class="flbl">Бренд <span class="freq">*</span></div>
+                    <input class="inp" id="aBrand" type="text" placeholder="Adidas" oninput="updatePrev()">
+                  </div>
+                  <div class="field">
+                    <div class="flbl">Тип <span class="freq">*</span></div>
+                    <select class="sel" id="aType">
+                      <option value="">— Выбери —</option>
+                      <option>Кроссовки</option><option>Туфли</option><option>Ботинки</option>
+                      <option>Сандалии</option><option>Тапочки</option><option>Сапоги</option>
+                      <option>Балетки</option><option>Мокасины</option><option>Угги</option><option>Другое</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <div class="flbl">Цвет <span class="freq">*</span></div>
+                    <input class="inp" id="aColor" type="text" placeholder="Белый, Чёрный..." oninput="updatePrev()">
+                  </div>
+                </div>
+
+                <details class="adv-details">
+                  <summary class="adv-summary"><span class="adv-arr">▸</span> Дополнительно (материал, сезон, поставщик)</summary>
+                  <div class="adv-body">
+                    <div class="fg fg-auto mb-12">
+                      <div class="field">
+                        <div class="flbl">Материал</div>
+                        <select class="sel" id="aMat">
+                          <option value="">— Не указан —</option>
+                          <option>Кожа натуральная</option><option>Кожа искусственная</option>
+                          <option>Замша</option><option>Текстиль</option><option>Резина</option><option>Синтетика</option>
+                        </select>
+                      </div>
+                      <div class="field">
+                        <div class="flbl">Сезон</div>
+                        <select class="sel" id="aSeason">
+                          <option value="">— Все —</option>
+                          <option>Весна/Осень</option><option>Лето</option><option>Зима</option><option>Деми</option>
+                        </select>
+                      </div>
+                      <div class="field">
+                        <div class="flbl">Аудитория</div>
+                        <select class="sel" id="aAud">
+                          <option value="">— Все —</option>
+                          <option>Женская</option><option>Мужская</option><option>Унисекс</option><option>Детская</option>
+                        </select>
+                      </div>
+                      <div class="field">
+                        <div class="flbl">Поставщик</div>
+                        <input class="inp" id="aSupp" type="text" placeholder="Дордой, Барахолка..." list="suppList">
+                        <datalist id="suppList"></datalist>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+
+                <div class="divider-lbl">Цены</div>
+                <div class="fg fg-3 mb-12">
+                  <!-- Buy price: owner only -->
+                  <div class="field owner-elem" id="buyPriceField" style="display:none">
+                    <div class="flbl">Цена закупки ₸ <span class="freq">*</span></div>
+                    <input class="inp" id="aBuy" type="number" placeholder="6000" min="0" oninput="calcMargin();updatePrev()">
+                    <div class="fhint">Заплатили поставщику — скрыто от продавщицы</div>
+                  </div>
+                  <div class="field">
+                    <div class="flbl">Цена продажи ₸ <span class="freq">*</span></div>
+                    <input class="inp" id="aSell" type="number" placeholder="10000" min="0" oninput="calcMargin();updatePrev()">
+                    <div class="fhint" id="sellPriceHint">По какой цене продаёте</div>
+                  </div>
+                  <!-- Margin: owner only -->
+                  <div class="field owner-elem" id="marginField" style="display:none">
+                    <div class="flbl">Маржа (авто)</div>
+                    <div class="inp" id="aMarginBox" style="font-weight:800;background:var(--green-l);border-color:rgba(26,122,60,.2);color:var(--green)">—</div>
+                  </div>
+                </div>
+
+                <div class="divider-lbl">Серия размеров</div>
+                <div class="field mb-12">
+                  <div class="flbl">Диапазон ОТ — ДО <span class="freq">*</span></div>
+                  <div class="fc gap-9 fw mb-8">
+                    <input class="inp inp-sz" type="number" id="szFrom" placeholder="36" min="10" max="60" oninput="buildSeries()">
+                    <span style="font-size:1.3rem;font-weight:900;color:var(--muted)">—</span>
+                    <input class="inp inp-sz" type="number" id="szTo" placeholder="41" min="10" max="60" oninput="buildSeries()">
+                    <span class="t-xs t-muted">Один размер = только "ОТ"</span>
+                  </div>
+                  <div class="sz-chips" id="szChips"></div>
+                  <div class="fhint mt-8">Укажи кол-во пар для каждого размера. По умолчанию 1.</div>
+                </div>
+
+                <div class="field mb-16">
+                  <div class="flbl">Заметки</div>
+                  <textarea class="ta" id="aNotes" placeholder="Особенности партии..."></textarea>
+                </div>
+
+                <div class="fc gap-9">
+                  <button class="btn btn-primary btn-lg w-full" id="arriveSubmitBtn" onclick="submitArrive()">➕ Добавить на склад</button>
+                  <button class="btn btn-outline" onclick="clearArrive()">↺</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="card mb-12" id="prevCard" style="display:none">
+              <div class="card-hdr"><div class="card-title">👁 Предпросмотр</div></div>
+              <div class="card-body" id="prevBody"></div>
+            </div>
+            <div class="card">
+              <div class="card-hdr"><div class="card-title">📋 Последние поступления</div></div>
+              <div id="arriveRecent"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SALES -->
+      <div class="page" id="page-sales">
+        <div class="page-hdr">
+          <div>
+            <div class="page-title">💰 Продажи</div>
+            <div class="page-sub">Оформление и история</div>
+          </div>
+        </div>
+        <div class="sl">
+          <div>
+            <div class="card mb-16">
+              <div class="card-hdr"><div class="card-title">🛒 Оформить продажу</div></div>
+              <div class="card-body">
+                <div class="field mb-12">
+                  <div class="flbl">Товар <span class="freq">*</span></div>
+                  <select class="sel" id="saleProd" onchange="onSaleProd(true)">
+                    <option value="">— Выбери товар —</option>
+                  </select>
+                </div>
+                <div id="saleBlock" style="display:none">
+                  <input type="hidden" id="saleSize">
+                  <div class="field mb-12">
+                    <div class="flbl">Размер <span class="freq">*</span></div>
+                    <div id="saleSizePicker" class="sz-pick-grid"></div>
+                  </div>
+                  <div id="saleStockInd" style="display:none;margin-bottom:12px">
+                    <div class="fc gap-9" style="background:var(--bg2);border-radius:8px;padding:9px 12px">
+                      <span id="saleStockIco" style="font-size:1rem"></span>
+                      <span id="saleStockTxt" style="font-size:.8rem;font-weight:700"></span>
+                    </div>
+                  </div>
+                  <div class="fg fg-2 mb-12">
+                    <div class="field">
+                      <div class="flbl">Цена продажи ₸ <span class="freq">*</span></div>
+                      <input class="inp" type="number" id="salePrice" placeholder="10000" min="0" oninput="calcSaleSum()">
+                      <div class="fhint" id="salePriceHint2"></div>
+                    </div>
+                    <div class="field">
+                      <div class="flbl">Кол-во пар</div>
+                      <input class="inp" type="number" id="saleQty" value="1" min="1" oninput="calcSaleSum()">
+                    </div>
+                  </div>
+                  <div class="field mb-12">
+                    <div class="flbl">Способ оплаты</div>
+                    <div class="pay-sel" id="salePaySel">
+                      <div class="pay-opt sel-pay" data-val="Наличные" onclick="selPay(this,'salePaySel')"><span class="pay-opt-icon">💵</span>Наличные</div>
+                      <div class="pay-opt" data-val="Карта" onclick="selPay(this,'salePaySel')"><span class="pay-opt-icon">💳</span>Карта</div>
+                      <div class="pay-opt" data-val="Kaspi" onclick="selPay(this,'salePaySel')"><span class="pay-opt-icon">📱</span>Kaspi</div>
+                      <div class="pay-opt" data-val="В долг" onclick="selPay(this,'salePaySel')"><span class="pay-opt-icon">🤝</span>В долг</div>
+                    </div>
+                  </div>
+                  <div class="fg fg-2 mb-12">
+                    <div class="field">
+                      <div class="flbl">Скидка ₸</div>
+                      <input class="inp" type="number" id="saleDisc" placeholder="0" oninput="calcSaleSum()">
+                    </div>
+                    <div class="field">
+                      <div class="flbl">Покупатель</div>
+                      <input class="inp" type="text" id="saleCust" placeholder="Имя (необяз.)">
+                    </div>
+                  </div>
+                  <div class="field mb-12">
+                    <div class="flbl">Заметки</div>
+                    <input class="inp" type="text" id="saleNote" placeholder="Торговался, обмен...">
+                  </div>
+                  <div class="sale-sum" id="saleSumBox">
+                    <div class="ss-lbl">К оплате</div>
+                    <div class="ss-total" id="saleTotDisp">—</div>
+                    <!-- Owner sees profit in real time -->
+                    <div class="info-row owner-elem" style="display:none">
+                      <span class="ir-lbl">👑 Прибыль (только хозяйке)</span>
+                      <span class="ir-val owner-elem" id="saleProDisp" style="color:var(--gold)">—</span>
+                    </div>
+                  </div>
+                  <button class="btn btn-success btn-lg btn-full mt-12" id="saleSubmitBtn" onclick="submitSale()">✅ Подтвердить продажу</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="card mb-12">
+              <div class="card-hdr"><div class="card-title">📅 Сегодня</div></div>
+              <div class="card-body" id="saleTodayStat"></div>
+            </div>
+            <div class="card mb-12 owner-elem" style="display:none">
+              <div class="card-hdr"><div class="card-title">📆 Месяц</div></div>
+              <div class="card-body" id="saleMonthStat"></div>
+            </div>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <div class="tbl-toolbar">
+            <div class="tbl-title">История продаж</div>
+            <div class="tbl-right">
+              <span class="tbl-cnt" id="salesCnt"></span>
+              <div class="search-wrap" style="width:190px">
+                <span class="search-ico">🔍</span>
+                <input class="search-inp" type="text" id="salesSearch" placeholder="Поиск..." oninput="renderSalesTbl()">
+              </div>
+              <select class="sel" style="width:auto;font-size:.75rem" id="salesFilt" onchange="renderSalesTbl()">
+                <option value="all">Все</option><option value="today">Сегодня</option>
+                <option value="week">Неделя</option><option value="month">Месяц</option>
+              </select>
+              <button class="btn btn-ghost btn-xs owner-elem" style="display:none" onclick="exportSalesCSV()">⬇ CSV</button>
+            </div>
+          </div>
+          <div class="tbl-overflow">
+            <table>
+              <thead>
+                <tr>
+                  <th>№</th><th>Дата / Время</th><th>Товар</th><th>Р-р</th><th>Цвет</th><th>Кол</th>
+                  <th class="owner-elem" style="display:none">Цена продажи</th>
+                  <th class="owner-elem" style="display:none">Закупка</th>
+                  <th class="owner-elem" style="display:none">Прибыль 👑</th>
+                  <th>Оплата</th><th>Покупатель</th><th>Заметки</th><th>Продавец</th><th></th>
+                </tr>
+              </thead>
+              <tbody id="salesTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- CALENDAR -->
+      <div class="page" id="page-calendar">
+        <div class="page-hdr">
+          <div>
+            <div class="page-title">📅 Календарь продаж</div>
+            <div class="page-sub">Нажми на день чтобы увидеть детали</div>
+          </div>
+          <div class="page-actions">
+            <button class="btn btn-outline btn-sm" onclick="calGoToday()">Сегодня</button>
+          </div>
+        </div>
+        <div class="sl">
+          <div>
+            <div class="cal-wrap mb-12">
+              <div class="cal-nav">
+                <button class="cal-nav-btn" onclick="calPrev()">← Пред.</button>
+                <div class="cal-nav-lbl" id="calLbl"></div>
+                <button class="cal-nav-btn" onclick="calNext()">След. →</button>
+              </div>
+              <div class="cal-grid" id="calGrid"></div>
+            </div>
+            <div class="card">
+              <div class="card-hdr"><div class="card-title">📊 Итоги месяца</div></div>
+              <div class="card-body" id="calMonthBody"></div>
+            </div>
+          </div>
+          <div>
+            <div class="dd-wrap" id="dayDetail">
+              <div class="dd-date">📅 Выбери день</div>
+              <div style="font-size:.82rem;color:var(--muted);padding:20px 0;text-align:center" id="ddContent">Нажми на день в календаре</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- REPORTS (owner only) -->
+      <div class="page" id="page-reports">
+        <div class="page-hdr">
+          <div>
+            <div class="page-title">📈 Отчёты</div>
+            <div class="page-sub">Только для хозяйки — закупки, прибыль, маржа</div>
+          </div>
+          <div class="page-actions">
+            <div class="psel" id="repPsel">
+              <button class="psel-btn active" onclick="setRepPrd('today',this)">Сегодня</button>
+              <button class="psel-btn" onclick="setRepPrd('week',this)">Неделя</button>
+              <button class="psel-btn" onclick="setRepPrd('month',this)">Месяц</button>
+              <button class="psel-btn" onclick="setRepPrd('3m',this)">3 мес.</button>
+              <button class="psel-btn" onclick="setRepPrd('year',this)">Год</button>
+              <button class="psel-btn" onclick="setRepPrd('all',this)">Всё</button>
+            </div>
+          </div>
+        </div>
+        <div class="card mb-12">
+          <div class="card-body" style="padding:11px 15px">
+            <div class="fc gap-6 fw mb-8">
+              <span class="t-xs t-muted fw-7">Быстро:</span>
+              <button class="dq-btn" onclick="setDateRange(0)">Сегодня</button>
+              <button class="dq-btn" onclick="setDateRange(7)">7 дней</button>
+              <button class="dq-btn" onclick="setDateRange(30)">30 дней</button>
+              <button class="dq-btn" onclick="setDateRange(90)">90 дней</button>
+              <button class="dq-btn" onclick="setDateRange(365)">Год</button>
+              <button class="dq-btn" onclick="clearRepDates()">Сбросить</button>
+            </div>
+            <div class="fc gap-12 fw">
+              <div class="fc gap-8"><label class="flbl" style="white-space:nowrap">С:</label><input class="inp" type="date" id="repFrom" style="width:145px" onchange="renderReports()"></div>
+              <div class="fc gap-8"><label class="flbl" style="white-space:nowrap">По:</label><input class="inp" type="date" id="repTo" style="width:145px" onchange="renderReports()"></div>
+              <button class="btn btn-ghost btn-sm" onclick="exportSalesCSV()">⬇ CSV</button>
+            </div>
+          </div>
+        </div>
+        <div class="kpi-grid" id="repKpi"></div>
+        <div class="two-col mb-16">
+          <div class="card"><div class="card-hdr"><div class="card-title">💰 Топ по выручке</div></div><div class="card-body"><div class="bar-chart" id="repTopRev"></div></div></div>
+          <div class="card"><div class="card-hdr"><div class="card-title">👟 Топ по кол-ву пар</div></div><div class="card-body"><div class="bar-chart" id="repTopQty"></div></div></div>
+        </div>
+        <div class="two-col mb-16">
+          <div class="card"><div class="card-hdr"><div class="card-title">📐 Остатки по размерам</div></div><div class="card-body"><div class="bar-chart" id="repSzRem"></div></div></div>
+          <div class="card"><div class="card-hdr"><div class="card-title">💳 Способы оплаты</div></div><div class="card-body" id="repPay"></div></div>
+        </div>
+        <div class="tbl-wrap">
+          <div class="tbl-toolbar"><div class="tbl-title">Детальный отчёт по товарам</div></div>
+          <div class="tbl-overflow">
+            <table>
+              <thead><tr><th>Товар</th><th>Бренд</th><th>Арт.</th><th>Пришло</th><th>Продано</th><th>Остаток</th><th>Выручка</th><th>Закупка (итого)</th><th>Прибыль 👑</th><th>Маржа%</th></tr></thead>
+              <tbody id="repDetailTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- HISTORY -->
+      <div class="page" id="page-history">
+        <div class="page-hdr">
+          <div>
+            <div class="page-title">🕐 История</div>
+            <div class="page-sub">Все операции по дням, месяцам, годам</div>
+          </div>
+        </div>
+        <div class="card mb-12">
+          <div class="card-body" style="padding:11px 15px">
+            <div class="fc gap-12 fw">
+              <select class="sel" style="width:auto" id="histYear" onchange="renderHistory()"></select>
+              <select class="sel" style="width:auto" id="histMonth" onchange="renderHistory()">
+                <option value="all">— Все месяцы —</option>
+                <option value="1">Январь</option><option value="2">Февраль</option><option value="3">Март</option>
+                <option value="4">Апрель</option><option value="5">Май</option><option value="6">Июнь</option>
+                <option value="7">Июль</option><option value="8">Август</option><option value="9">Сентябрь</option>
+                <option value="10">Октябрь</option><option value="11">Ноябрь</option><option value="12">Декабрь</option>
+              </select>
+              <div class="search-wrap" style="flex:1;min-width:160px">
+                <span class="search-ico">🔍</span>
+                <input class="search-inp" type="text" id="histSearch" placeholder="Поиск..." oninput="renderHistory()">
+              </div>
+              <div class="fchips" id="histTypeChips">
+                <button class="fchip active" onclick="setHistType('all',this)">Все</button>
+                <button class="fchip" onclick="setHistType('sales',this)">Продажи</button>
+                <button class="fchip" onclick="setHistType('arrive',this)">Приходы</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="kpi-grid" id="histKpi"></div>
+        <div class="tl" id="histTL"></div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="page" id="page-settings">
+        <div class="page-hdr"><div class="page-title">⚙️ Настройки</div></div>
+        <div class="two-col">
+          <div>
+            <div class="card mb-12">
+              <div class="card-hdr"><div class="card-title">👤 Мой профиль</div></div>
+              <div class="card-body" id="profileCard"></div>
+            </div>
+            <div class="card mb-12">
+              <div class="card-hdr"><div class="card-title">⚙️ Параметры</div></div>
+              <div class="card-body">
+                <div class="field mb-12">
+                  <div class="flbl">Порог «Мало» (пар)</div>
+                  <input class="inp" type="number" id="setLow" value="2" min="1" max="20">
+                </div>
+                <button class="btn btn-outline" onclick="saveSett()">💾 Сохранить</button>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="card mb-12">
+              <div class="card-hdr"><div class="card-title">📊 База данных</div></div>
+              <div class="card-body" id="dbStats"></div>
+            </div>
+            <div class="card mb-12">
+              <div class="card-hdr"><div class="card-title">📤 Экспорт</div></div>
+              <div class="card-body">
+                <div class="fc gap-9 fw">
+                  <button class="btn btn-outline btn-sm" onclick="exportSalesCSV()">⬇ Продажи CSV</button>
+                  <button class="btn btn-outline btn-sm" onclick="exportStockCSV()">⬇ Склад CSV</button>
+                </div>
+              </div>
+            </div>
+            <div class="card owner-elem" style="display:none">
+              <div class="card-hdr"><div class="card-title">⚠️ Опасная зона</div></div>
+              <div class="card-body">
+                <div class="t-sm t-muted mb-12">Необратимые действия!</div>
+                <div class="fc gap-9 fw">
+                  <button class="btn btn-danger btn-sm" onclick="clearSales()">🗑 Удалить продажи</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MOBILE NAV -->
+  <div class="mob-nav">
+    <button class="mob-nav-item active" onclick="navTo('dash')"><span class="mn-icon">📊</span>Главная</button>
+    <button class="mob-nav-item" onclick="navTo('stock')"><span class="mn-icon">🗃</span>Склад<span class="mob-nav-badge" id="mobLowBadge" style="display:none">!</span></button>
+    <button class="mob-nav-item" onclick="navTo('arrive')"><span class="mn-icon">📦</span>Приход</button>
+    <button class="mob-nav-item" onclick="navTo('sales')"><span class="mn-icon">💰</span>Продажи</button>
+    <button class="mob-nav-item" onclick="navTo('calendar')"><span class="mn-icon">📅</span>Календарь</button>
+    <button class="mob-nav-item owner-elem" style="display:none" onclick="navTo('reports')"><span class="mn-icon">📈</span>Отчёты</button>
+    <button class="mob-nav-item" onclick="navTo('history')"><span class="mn-icon">🕐</span>История</button>
+    <button class="mob-nav-item" onclick="navTo('settings')"><span class="mn-icon">⚙️</span>Настройки</button>
+  </div>
+</div>
+
+<!-- Inline boot: runs immediately (no defer), decides which screen to show
+     before any external script has loaded. Zero network. Zero wait. -->
+<script>
+(function () {
+  try {
+    // Does Supabase have a non-expired session stored locally?
+    var raw = localStorage.getItem('sb-rworuvzsqtkljkjszvrw-auth-token');
+    if (!raw) return; // No session — authPage already visible by default
+    var d = JSON.parse(raw);
+    var ok = d && d.access_token && (!d.expires_at || d.expires_at > Date.now() / 1000);
+    if (!ok) return;
+
+    // User has a valid local session — switch to loading screen immediately
+    document.getElementById('authPage').style.display = 'none';
+    document.getElementById('loadingPage').style.display = 'flex';
+  } catch (e) {}
+})();
+</script>
+
+<script src="app.js" defer></script>
+
+<!-- Register Service Worker for offline support -->
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+</script>
+
+</body>
+</html>

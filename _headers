@@ -1,0 +1,19 @@
+# ── Never cache the service worker — updates must propagate immediately ──
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# ── App shell — revalidate on every visit (CDN serves stale if unchanged) ──
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+# ── Manifest and icon — short TTL so name/color changes deploy fast ──
+/manifest.json
+  Cache-Control: public, max-age=3600
+/icon.svg
+  Cache-Control: public, max-age=86400
+
+# ── JS and CSS — 1 hour cache (SW keeps them fresh anyway) ──
+/app.js
+  Cache-Control: public, max-age=3600
+/styles.css
+  Cache-Control: public, max-age=3600
