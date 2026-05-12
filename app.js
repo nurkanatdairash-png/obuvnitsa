@@ -180,6 +180,11 @@ function loadProfile() {
   // Profile is set at login and restored from localStorage — nothing to fetch
 }
 
+function initArriveDateDefault() {
+  const el = document.getElementById('aArriveDate');
+  if (el && !el.value) el.value = new Date().toISOString().slice(0, 10);
+}
+
 /* ═══════════════════════════════════════════════════════
    LOAD DATA FROM SUPABASE
 ═══════════════════════════════════════════════════════ */
@@ -442,6 +447,8 @@ function setupRoleUI() {
   if (marginField) marginField.style.display = role === 'owner' ? '' : 'none';
   if (sellerNote) sellerNote.style.display = role === 'seller' ? 'block' : 'none';
 
+  initArriveDateDefault();
+
   // Date line
   const dl = document.getElementById('dashDateLine');
   if (dl) dl.textContent = new Date().toLocaleDateString(CFG.LOC, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -569,7 +576,14 @@ function updateBadges() {
   const b = document.getElementById('mobLowBadge');
   if (b) { b.style.display = lowCount > 0 ? 'block' : 'none'; b.textContent = lowCount; }
   const sub = document.getElementById('stockSub');
-  if (sub) sub.textContent = `${ST.products.length} позиций · ${groups.filter(g => g.totalRem > 0).length} в наличии · ${lowCount} заканчивается`;
+  if (sub) {
+    const sm2 = buildSoldMap();
+    const remPairs = ST.products.reduce((a, p) => a + getRem(p, sm2), 0);
+    const invStr = ST.role === 'owner'
+      ? ` · вложено ${fmt(ST.products.reduce((a, p) => a + (p.buyPriceRaw || 0) * getRem(p, sm2), 0))}`
+      : '';
+    sub.textContent = `${groups.filter(g => g.totalRem > 0).length} моделей · ${remPairs} пар${invStr}${lowCount ? ` · ⚠️ ${lowCount} заканчивается` : ''}`;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -602,14 +616,20 @@ function renderDash() {
     if (lai) lai.innerHTML = lowG.slice(0, 8).map(g => `<div class="low-item">${esc(g.name)} ${esc(g.color)} — ${g.totalRem} пар</div>`).join('');
   }
 
+  // Stock financial totals (owner only)
+  const totalInvested  = ST.products.reduce((a, p) => a + (p.buyPriceRaw || 0) * getRem(p, sm), 0);
+  const totalStockSell = ST.products.reduce((a, p) => a + (p.sellPrice || 0) * getRem(p, sm), 0);
+
   let kpiHtml = `
-    <div class="kpi"><div class="kpi-stripe orange"></div><div class="kpi-label">Пар в наличии</div><div class="kpi-val orange">${totalRem}</div><div class="kpi-sub">${ST.products.length} позиций</div></div>
+    <div class="kpi"><div class="kpi-stripe orange"></div><div class="kpi-label">Пар в наличии</div><div class="kpi-val orange">${totalRem}</div><div class="kpi-sub">${groups.length} моделей</div></div>
     ${ST.role === 'owner' ? `<div class="kpi"><div class="kpi-stripe green"></div><div class="kpi-label">Выручка</div><div class="kpi-val green">${fmt(rev)}</div><div class="kpi-sub">${sales.length} продаж · ${pairs} пар</div></div>` : ''}
     <div class="kpi"><div class="kpi-stripe blue"></div><div class="kpi-label">Продаж</div><div class="kpi-val blue">${sales.length}</div><div class="kpi-sub">${pairs} пар</div></div>`;
   if (ST.role === 'owner') {
     kpiHtml += `
       <div class="kpi"><div class="kpi-stripe gold"></div><div class="kpi-label">Прибыль 👑</div><div class="kpi-val gold">${fmt(profitRaw)}</div><div class="kpi-sub">Маржа ${margin}%</div></div>
-      <div class="kpi"><div class="kpi-stripe teal"></div><div class="kpi-label">Средний чек</div><div class="kpi-val teal">${fmt(sales.length ? Math.round(rev / sales.length) : 0)}</div></div>`;
+      <div class="kpi"><div class="kpi-stripe teal"></div><div class="kpi-label">Средний чек</div><div class="kpi-val teal">${fmt(sales.length ? Math.round(rev / sales.length) : 0)}</div></div>
+      <div class="kpi"><div class="kpi-stripe red"></div><div class="kpi-label">Вложено в склад 👑</div><div class="kpi-val red">${fmt(totalInvested)}</div><div class="kpi-sub">себестоимость остатка</div></div>
+      <div class="kpi"><div class="kpi-stripe purple"></div><div class="kpi-label">Склад по ценам продажи</div><div class="kpi-val purple">${fmt(totalStockSell)}</div><div class="kpi-sub">если всё продать</div></div>`;
   }
   document.getElementById('dashKpi').innerHTML = kpiHtml;
 
@@ -972,6 +992,7 @@ async function submitArrive() {
 
   const series = from + (end > from ? '–' + end : '');
   const today = new Date().toISOString().slice(0, 10);
+  const arriveDate = gv('aArriveDate') || today;
   const baseRowId = Date.now() + '_' + Math.random().toString(36).slice(2, 8);
 
   const rows = sizes.map((sz, i) => ({
@@ -985,7 +1006,7 @@ async function submitArrive() {
     size: sz.size,
     qty: sz.qty,
     series,
-    arrive_date: today,
+    arrive_date: arriveDate,
   }));
 
   const btn = document.getElementById('arriveSubmitBtn');
@@ -1007,6 +1028,8 @@ async function submitArrive() {
 function clearArrive() {
   ['aCode', 'aName', 'aBrand', 'aColor', 'aBuy', 'aSell', 'aSupp', 'aNotes', 'szFrom', 'szTo'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
   ['aType', 'aMat', 'aSeason', 'aAud'].forEach(id => { const e = document.getElementById(id); if (e) e.selectedIndex = 0; });
+  const nd = document.getElementById('aArriveDate'); if (nd) nd.value = new Date().toISOString().slice(0, 10);
+  const ta = document.getElementById('aNotes'); if (ta) ta.value = '';
   const box = document.getElementById('szChips'); if (box) box.innerHTML = '';
   const pc = document.getElementById('prevCard'); if (pc) pc.style.display = 'none';
   const mb = document.getElementById('aMarginBox'); if (mb) { mb.textContent = '—'; mb.style.color = 'var(--muted)'; }

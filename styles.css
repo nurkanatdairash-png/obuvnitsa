@@ -137,10 +137,10 @@ input,select,textarea{font-family:'Geologica',sans-serif}
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin-bottom:20px}
 .kpi{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;box-shadow:var(--shadow-xs);position:relative;overflow:hidden}
 .kpi-stripe{position:absolute;top:0;left:0;right:0;height:3px;border-radius:var(--r) var(--r) 0 0}
-.kpi-stripe.orange{background:var(--accent)}.kpi-stripe.green{background:var(--green)}.kpi-stripe.gold{background:var(--gold)}.kpi-stripe.blue{background:var(--blue)}.kpi-stripe.teal{background:var(--teal)}
+.kpi-stripe.orange{background:var(--accent)}.kpi-stripe.green{background:var(--green)}.kpi-stripe.gold{background:var(--gold)}.kpi-stripe.blue{background:var(--blue)}.kpi-stripe.teal{background:var(--teal)}.kpi-stripe.red{background:var(--red)}.kpi-stripe.purple{background:#7c3aed}
 .kpi-label{font-size:.63rem;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px}
 .kpi-val{font-size:1.6rem;font-weight:900;line-height:1;letter-spacing:-1px}
-.kpi-val.orange{color:var(--accent)}.kpi-val.green{color:var(--green)}.kpi-val.gold{color:var(--gold)}.kpi-val.blue{color:var(--blue)}.kpi-val.teal{color:var(--teal)}
+.kpi-val.orange{color:var(--accent)}.kpi-val.green{color:var(--green)}.kpi-val.gold{color:var(--gold)}.kpi-val.blue{color:var(--blue)}.kpi-val.teal{color:var(--teal)}.kpi-val.red{color:var(--red)}.kpi-val.purple{color:#7c3aed}
 .kpi-sub{font-size:.68rem;color:var(--muted);margin-top:5px}
 
 /* ═══ FORM ═══════════════════════════════════════ */
