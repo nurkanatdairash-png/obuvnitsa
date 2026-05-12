@@ -123,9 +123,14 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     <div class="auth-card">
       <div class="auth-err" id="authErr"></div>
       <div class="auth-field">
-        <div class="auth-lbl">Код</div>
+        <div class="auth-lbl">Твоё имя <span style="font-size:.75rem;opacity:.6">(необяз.)</span></div>
+        <input class="auth-inp" type="text" id="sellerName" placeholder="Айгуль, Гүлдана..." autocomplete="name"
+               onkeydown="if(event.key==='Enter')document.getElementById('accessCode').focus()">
+      </div>
+      <div class="auth-field">
+        <div class="auth-lbl">Код доступа</div>
         <input class="auth-inp" type="password" id="accessCode" placeholder="••••••" autocomplete="off"
-               onkeydown="if(event.key==='Enter')doAuthLogin()" autofocus>
+               onkeydown="if(event.key==='Enter')doAuthLogin()">
       </div>
       <button class="auth-btn" id="loginBtn" onclick="doAuthLogin()">Войти →</button>
     </div>
@@ -728,7 +733,13 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 (function () {
   try {
     var lu = JSON.parse(localStorage.getItem('obuvnitsa_last'));
-    if (!lu || !lu.role) return;
+    if (!lu || !lu.role) {
+      if (lu && lu.name) {
+        var ni = document.getElementById('sellerName');
+        if (ni) ni.value = lu.name;
+      }
+      return;
+    }
     document.getElementById('authPage').style.display = 'none';
     document.getElementById('loadingPage').style.display = 'flex';
   } catch (e) {}

@@ -156,11 +156,13 @@ function doAuthLogin() {
   if (code === SELLER_CODE) role = 'seller';
   if (!role) { showAuthErr('Неверный код'); return; }
 
-  const name = role === 'owner' ? 'Хозяйка' : 'Продавщица';
+  const enteredName = (document.getElementById('sellerName')?.value || '').trim();
+  const defaultName = role === 'owner' ? 'Хозяйка' : 'Продавщица';
+  const name = enteredName || defaultName;
   ST.user    = { id: role, email: name };
   ST.profile = { role, full_name: name };
   ST.role    = role;
-  saveLastUser(role);
+  saveLastUser(role, name);
   initApp();
 }
 
@@ -353,8 +355,8 @@ function saveCache(userId, role) {
 // ── Last-user record for zero-wait instant boot ──────────
 const _LAST_KEY = 'obuvnitsa_last';
 
-function saveLastUser(role) {
-  try { localStorage.setItem(_LAST_KEY, JSON.stringify({ role })); } catch {}
+function saveLastUser(role, name) {
+  try { localStorage.setItem(_LAST_KEY, JSON.stringify({ role, name: name || '' })); } catch {}
 }
 function clearLastUser() {
   try { localStorage.removeItem(_LAST_KEY); } catch {}
@@ -372,7 +374,7 @@ function tryInstantBoot() {
   try {
     const lu = JSON.parse(localStorage.getItem(_LAST_KEY));
     if (!lu?.role) return false;
-    const name = lu.role === 'owner' ? 'Хозяйка' : 'Продавщица';
+    const name = lu.name || (lu.role === 'owner' ? 'Хозяйка' : 'Продавщица');
     ST.role    = lu.role;
     ST.user    = { id: lu.role, email: name };
     ST.profile = { role: lu.role, full_name: name };
@@ -393,7 +395,7 @@ async function initApp() {
   if (!alreadyVisible) showLoading();
 
   loadProfile();
-  saveLastUser(ST.role);
+  saveLastUser(ST.role, ST.profile?.full_name);
 
   const hasCached = loadCache(ST.role, ST.role);
   if (!alreadyVisible) {
@@ -471,6 +473,7 @@ function renderProfileCard() {
   const el = document.getElementById('profileCard');
   if (!el) return;
   el.innerHTML = `
+    <div class="info-row"><span class="ir-lbl">Имя</span><span class="ir-val">${esc(ST.profile?.full_name || '—')}</span></div>
     <div class="info-row"><span class="ir-lbl">Роль</span><span class="ir-val">${ST.role === 'owner' ? '👑 Хозяйка' : '🧑‍💼 Продавщица'}</span></div>`;
 }
 
@@ -478,8 +481,8 @@ function renderProfileCard() {
    NAVIGATION
 ═══════════════════════════════════════════════════════ */
 function navTo(p) {
-  if (ST.role !== 'owner' && ['reports', 'history'].includes(p)) {
-    toast('⚠️ Только для хозяйки', 'warn'); return;
+  if (ST.role !== 'owner' && p === 'reports') {
+    toast('⚠️ Отчёты — только для хозяйки', 'warn'); return;
   }
   ST.page = p;
   document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
@@ -531,7 +534,7 @@ function buildGroups(sm) {
     if (!g[key]) g[key] = {
       code: p.code || '', name: p.name, brand: p.brand || '', type: p.type || '',
       color: p.color, material: p.material || '', season: p.season || '', audience: p.audience || '',
-      sellPrice: p.sellPrice, buyPrice: p.buyPriceRaw || 0, supplier: p.supplier || '',
+      sellPrice: p.sellPrice, buyPrice: p.buyPrice || 0, supplier: p.supplier || '',
       notes: p.notes || '', firstDate: p.date, sizes: [], totalIn: 0, totalSold: 0, totalRem: 0
     };
     const rem = getRem(p, sm);
@@ -581,10 +584,9 @@ function updateBadges() {
   if (b) { b.style.display = lowCount > 0 ? 'block' : 'none'; b.textContent = lowCount; }
   const sub = document.getElementById('stockSub');
   if (sub) {
-    const sm2 = buildSoldMap();
-    const remPairs = ST.products.reduce((a, p) => a + getRem(p, sm2), 0);
+    const remPairs = ST.products.reduce((a, p) => a + getRem(p, sm), 0);
     const invStr = ST.role === 'owner'
-      ? ` · вложено ${fmt(ST.products.reduce((a, p) => a + (p.buyPriceRaw || 0) * getRem(p, sm2), 0))}`
+      ? ` · вложено ${fmt(ST.products.reduce((a, p) => a + (p.buyPriceRaw || 0) * getRem(p, sm), 0))}`
       : '';
     sub.textContent = `${groups.filter(g => g.totalRem > 0).length} моделей · ${remPairs} пар${invStr}${lowCount ? ` · ⚠️ ${lowCount} заканчивается` : ''}`;
   }
@@ -742,7 +744,7 @@ function renderStock() {
           </div>
           ${rb}
           <div class="sz-acts">
-            <button class="btn btn-success btn-xs" ${s.rem <= 0 ? 'disabled' : ''} onclick="openQS('${escA(g.name)}','${escA(g.color)}',${s.size},'${s.rowId || ''}',${g.buyPrice},${s.buyPriceRaw || 0},${g.sellPrice})">💰 Продать</button>
+            <button class="btn btn-success btn-xs" ${s.rem <= 0 ? 'disabled' : ''} onclick="openQS('${escA(g.name)}','${escA(g.color)}',${s.size},'${s.rowId || ''}',${g.buyPrice},${ST.role === 'owner' ? (s.buyPriceRaw || 0) : 0},${g.sellPrice})">💰 Продать</button>
             ${ST.role === 'owner' ? `<button class="btn-icon t-sm" onclick="delProduct('${s.id || s.rowId}')">✕</button>` : ''}
           </div>
         </div>`;
@@ -801,7 +803,7 @@ function openQS(name, color, size, rowId, buyPriceDisplay, buyPriceRaw, sellPric
 }
 
 function calcQS() {
-  const price = gn('qsPrice'), qty = gi('qsQty') || 1, disc = Math.max(0, gn('qsDisc'));
+  const price = gn('qsPrice'), qty = Math.max(1, gi('qsQty') || 1), disc = Math.max(0, gn('qsDisc'));
   if (!ST.qsData || !price) { document.getElementById('qsSummary').classList.remove('show'); return; }
   const total = Math.max(0, qty * price - disc);
   const profit = total - qty * (ST.qsData.buyPriceRaw || 0);
@@ -815,7 +817,7 @@ function calcQS() {
 async function submitQS() {
   if (_saleInProgress) return;
   if (!ST.qsData) { closeModal('qsModal'); return; }
-  const price = gn('qsPrice'), qty = gi('qsQty') || 1, disc = gn('qsDisc');
+  const price = gn('qsPrice'), qty = Math.max(1, gi('qsQty') || 1), disc = gn('qsDisc');
   const payment = getSelPay('qsPaySel'), cust = gv('qsCust'), note = gv('qsNote');
   if (!price) { toast('⚠️ Введи цену продажи!', 'err'); return; }
   if (qty < 1) { toast('⚠️ Кол-во должно быть минимум 1', 'err'); return; }
@@ -1183,7 +1185,7 @@ function onSaleSize() {
 }
 
 function calcSaleSum() {
-  const price = gn('salePrice'), qty = gi('saleQty') || 1, disc = Math.max(0, gn('saleDisc'));
+  const price = gn('salePrice'), qty = Math.max(1, gi('saleQty') || 1), disc = Math.max(0, gn('saleDisc'));
   const val = gv('saleSize');
   const sb = document.getElementById('saleSumBox');
   if (!price || !val) { if (sb) sb.classList.remove('show'); return; }
@@ -1198,7 +1200,7 @@ function calcSaleSum() {
 async function submitSale() {
   if (_saleInProgress) return;
   const combo = gv('saleProd'), sizeVal = gv('saleSize');
-  const price = gn('salePrice'), qty = gi('saleQty') || 1, disc = gn('saleDisc');
+  const price = gn('salePrice'), qty = Math.max(1, gi('saleQty') || 1), disc = gn('saleDisc');
   const payment = getSelPay('salePaySel'), cust = gv('saleCust'), note = gv('saleNote');
 
   if (!combo) { toast('⚠️ Выбери товар', 'err'); return; }
@@ -1271,8 +1273,11 @@ async function submitSale() {
   if (szInput) szInput.value = '';
   ['salePrice', 'saleQty', 'saleDisc', 'saleCust', 'saleNote'].forEach(id => {
     const e = document.getElementById(id);
-    if (e) e.value = id === 'saleQty' ? '1' : id === 'saleDisc' ? '0' : '';
+    if (e) e.value = id === 'saleQty' ? '1' : '';
   });
+  document.querySelectorAll('#salePaySel .pay-opt').forEach(o => o.classList.remove('sel-pay'));
+  const fp = document.querySelector('#salePaySel .pay-opt:first-child');
+  if (fp) fp.classList.add('sel-pay');
   document.getElementById('saleSumBox').classList.remove('show');
   toast(`✅ Продано! ${prod.name} р.${size} — ${fmt(total)}`, 'ok');
   await loadSales();
@@ -1510,7 +1515,7 @@ function initHistYear() {
   sel.value = (prev && [...sel.options].some(o => o.value === prev)) ? prev : String(now);
 }
 function renderHistory() {
-  if (ST.page !== 'history') return;
+  if (ST.page !== 'history' || !ST.role) return;
   initHistYear();
   const year = gv('histYear'), month = gv('histMonth'), q = gv('histSearch').toLowerCase();
   let sales = [...ST.sales], arrivals = [...ST.products];
@@ -1602,10 +1607,15 @@ function renderDbStats() {
    EXPORT
 ═══════════════════════════════════════════════════════ */
 function exportSalesCSV() {
+  let sales = ST.sales;
+  if (ST.page === 'reports') {
+    const repFrom = gv('repFrom'), repTo = gv('repTo');
+    sales = (repFrom || repTo) ? byDateRange(ST.sales, repFrom, repTo) : byPrd(ST.sales, ST.repPrd);
+  }
   const rows = [['Дата', 'Время', 'Товар', 'Размер', 'Цвет', 'Кол-во', 'Цена', 'Закупка', 'Прибыль', 'Оплата', 'Покупатель', 'Заметки', 'Продавец']];
-  ST.sales.forEach(s => rows.push([s.date, s.time || '', s.name, s.size, s.color || '', s.qty, s.total, (s.buyPriceRaw || 0) * s.qty, s.profitRaw || 0, s.payment, s.customer || '', s.note || '', s.sellerName || '']));
+  sales.forEach(s => rows.push([s.date, s.time || '', s.name, s.size, s.color || '', s.qty, s.total, (s.buyPriceRaw || 0) * s.qty, s.profitRaw || 0, s.payment, s.customer || '', s.note || '', s.sellerName || '']));
   dlCSV(rows, 'sales_' + new Date().toISOString().slice(0, 10) + '.csv');
-  toast('⬇ Экспорт готов', 'ok');
+  toast(`⬇ Экспорт готов (${sales.length} записей)`, 'ok');
 }
 function exportStockCSV() {
   const sm = buildSoldMap();
@@ -1649,7 +1659,7 @@ async function clearSales() {
         // Saved role exists but no cached data — restore role and load fresh
         const lu = JSON.parse(localStorage.getItem(_LAST_KEY) || 'null');
         if (lu?.role) {
-          const name = lu.role === 'owner' ? 'Хозяйка' : 'Продавщица';
+          const name = lu.name || (lu.role === 'owner' ? 'Хозяйка' : 'Продавщица');
           ST.role    = lu.role;
           ST.user    = { id: lu.role, email: name };
           ST.profile = { role: lu.role, full_name: name };
