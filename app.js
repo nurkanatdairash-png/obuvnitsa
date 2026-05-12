@@ -45,6 +45,7 @@ const CFG = {
 };
 
 let _saleInProgress = false;
+let _stockInProgress = false;
 
 /* ═══════════════════════════════════════════════════════
    UTILS
@@ -170,6 +171,7 @@ function doAuthLogin() {
 
 async function doLogout() {
   _saleInProgress = false;
+  _stockInProgress = false;
   if (ST._pollTimer) { clearInterval(ST._pollTimer); ST._pollTimer = null; }
   ST.realtimeSubs.forEach(sub => SB.removeChannel(sub));
   ST.realtimeSubs = [];
@@ -475,8 +477,26 @@ function renderProfileCard() {
   const el = document.getElementById('profileCard');
   if (!el) return;
   el.innerHTML = `
-    <div class="info-row"><span class="ir-lbl">Имя</span><span class="ir-val">${esc(ST.profile?.full_name || '—')}</span></div>
-    <div class="info-row"><span class="ir-lbl">Роль</span><span class="ir-val">${ST.role === 'owner' ? '👑 Хозяйка' : '🧑‍💼 Продавщица'}</span></div>`;
+    <div class="info-row"><span class="ir-lbl">Роль</span><span class="ir-val">${ST.role === 'owner' ? '👑 Хозяйка' : '🧑‍💼 Продавщица'}</span></div>
+    <div class="field" style="padding:8px 0 4px">
+      <div class="flbl">Имя</div>
+      <div class="fc gap-9" style="margin-top:4px">
+        <input class="inp" type="text" id="profileNameInp" value="${esc(ST.profile?.full_name || '')}" placeholder="Введи своё имя" style="flex:1">
+        <button class="btn btn-outline" onclick="changeName()">💾</button>
+      </div>
+    </div>`;
+}
+
+function changeName() {
+  const inp = document.getElementById('profileNameInp');
+  const name = (inp?.value || '').trim();
+  if (!name) { toast('⚠️ Введи имя', 'err'); return; }
+  if (ST.profile) ST.profile.full_name = name;
+  if (ST.user) ST.user.email = name;
+  saveLastUser(ST.role, name);
+  const chip = document.getElementById('tbUserName');
+  if (chip) chip.textContent = name;
+  toast('✅ Имя изменено', 'ok');
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -906,12 +926,27 @@ async function delProduct(id) {
 }
 
 async function openDeleteModal() {
-  const names = [...new Set(ST.products.map(p => p.name))];
-  const sel = prompt('Введи точное название для удаления:\n' + names.join('\n'));
+  const names = [...new Set(ST.products.map(p => p.name))].sort((a, b) => a.localeCompare(b, CFG.LOC));
+  if (!names.length) { toast('Склад пуст', 'err'); return; }
+
+  // Picker step: reuse confOvl with a <select> dropdown
+  const sel = await new Promise(res => {
+    ST.confFn = ok => res(ok ? (document.getElementById('_delSel')?.value || null) : null);
+    document.getElementById('confIco').textContent = '🗑';
+    document.getElementById('confTtl').textContent = 'Удалить товар по названию';
+    const txt = document.getElementById('confTxt');
+    txt.innerHTML = '<select id="_delSel" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem;margin-top:6px;background:var(--surface);color:var(--text)">'
+      + names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')
+      + '</select>';
+    const btn = document.getElementById('confOkBtn');
+    btn.textContent = 'Выбрать'; btn.className = 'btn btn-danger';
+    document.getElementById('confOvl').classList.add('show');
+  });
   if (!sel) return;
-  const found = ST.products.filter(p => p.name.toLowerCase() === sel.toLowerCase());
+
+  const found = ST.products.filter(p => p.name === sel);
   if (!found.length) { toast('Товар не найден', 'err'); return; }
-  const ok = await confDialog('🗑', `Удалить "${sel}"?`, `Будет удалено ${found.length} строк.`, 'Удалить', 'btn-danger');
+  const ok = await confDialog('🗑', `Удалить "${sel}"?`, `Будет удалено ${found.length} строк (все размеры).`, 'Удалить', 'btn-danger');
   if (!ok) return;
   const ids = found.map(p => p.id);
   const { error } = await SB.from('products').delete().in('id', ids);
@@ -979,7 +1014,7 @@ function updatePrev() {
 }
 
 async function submitArrive() {
-  if (_saleInProgress) return;
+  if (_stockInProgress) return;
   const name = gv('aName'), brand = gv('aBrand'), color = gv('aColor'), type = gv('aType');
   const sell = gn('aSell'), code = gv('aCode'), mat = gv('aMat');
   const season = gv('aSeason'), aud = gv('aAud'), supp = gv('aSupp'), notes = gv('aNotes');
@@ -1023,13 +1058,13 @@ async function submitArrive() {
     arrive_date: arriveDate,
   }));
 
-  _saleInProgress = true;
+  _stockInProgress = true;
   const btn = document.getElementById('arriveSubmitBtn');
   btn.disabled = true; btn.textContent = 'Сохраняем...';
 
   const { error } = await SB.from('products').insert(rows);
 
-  _saleInProgress = false;
+  _stockInProgress = false;
   btn.disabled = false; btn.textContent = '➕ Добавить на склад';
 
   if (error) { toast('❌ Ошибка: ' + error.message, 'err'); return; }
@@ -1538,8 +1573,12 @@ function renderHistory() {
   if (ST.histType !== 'sales') arrivals.forEach(p => { if (!byDay[p.date]) byDay[p.date] = { sales: [], arr: [] }; byDay[p.date].arr.push(p); });
   const days = Object.keys(byDay).sort((a, b) => parseD(b) - parseD(a));
   const tl = document.getElementById('histTL'); if (!tl) return;
-  if (!days.length) { tl.innerHTML = '<div class="card card-p t-muted t-sm">Нет данных за выбранный период</div>'; return; }
-  tl.innerHTML = days.map(ds => {
+  const cutoffYear = new Date().getFullYear() - 1;
+  const oldYearNote = (year !== 'all' && +year < cutoffYear)
+    ? '<div class="card card-p t-muted t-sm" style="border-left:3px solid var(--gold);padding-left:12px">⚠️ Продажи загружаются только за последние 12 месяцев. Более ранние данные в приложении недоступны.</div>'
+    : '';
+  if (!days.length) { tl.innerHTML = oldYearNote || '<div class="card card-p t-muted t-sm">Нет данных за выбранный период</div>'; return; }
+  tl.innerHTML = oldYearNote + days.map(ds => {
     const d = byDay[ds];
     const dayRev = d.sales.reduce((a, s) => a + s.total, 0);
     const dayProfit = d.sales.reduce((a, s) => a + (s.profitRaw || 0), 0);
@@ -1622,10 +1661,18 @@ function exportSalesCSV() {
 }
 function exportStockCSV() {
   const sm = buildSoldMap();
+  let products = ST.products;
+  if (ST.page === 'stock') {
+    let groups = buildGroups(sm);
+    if (ST.stockFilt !== 'all') groups = groups.filter(g => g.type === ST.stockFilt);
+    const q = (document.getElementById('stockSearch')?.value || '').toLowerCase();
+    if (q) groups = groups.filter(g => g.name.toLowerCase().includes(q) || (g.brand || '').toLowerCase().includes(q) || (g.color || '').toLowerCase().includes(q) || (g.code || '').toLowerCase().includes(q));
+    products = groups.flatMap(g => g.sizes);
+  }
   const rows = [['Арт.', 'Название', 'Бренд', 'Тип', 'Цвет', 'Размер', 'Пришло', 'Продано', 'Остаток', 'Цена закупки', 'Цена продажи', 'Поставщик', 'Дата']];
-  ST.products.forEach(p => { const rem = getRem(p, sm); rows.push([p.code || '', p.name, p.brand || '', p.type || '', p.color, p.size, p.qty, p.qty - rem, rem, p.buyPriceRaw || 0, p.sellPrice, p.supplier || '', p.date || '']); });
-  dlCSV(rows, 'stock_' + new Date().toISOString().slice(0, 10) + '.csv');
-  toast('⬇ Склад экспортирован', 'ok');
+  products.forEach(p => { const rem = getRem(p, sm); rows.push([p.code || '', p.name, p.brand || '', p.type || '', p.color, p.size, p.qty, p.qty - rem, rem, p.buyPriceRaw || 0, p.sellPrice, p.supplier || '', p.date || '']); });
+  dlCSV(rows, 'stock_' + todayISO() + '.csv');
+  toast(`⬇ Склад экспортирован (${products.length} позиций)`, 'ok');
 }
 function dlCSV(rows, fn) {
   const csv = rows.map(r => r.map(v => '"' + String(v || '').replace(/"/g, '""') + '"').join(',')).join('\n');
