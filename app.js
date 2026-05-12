@@ -186,7 +186,9 @@ function loadProfile() {
 async function loadProducts() {
   const { data, error } = await SB.from('products')
     .select('*')
-    .order('created_at', { ascending: false });
+    .gt('qty', 0)          // skip fully sold-out rows — massively reduces dataset size
+    .order('created_at', { ascending: false })
+    .limit(3000);          // hard ceiling to prevent silent truncation
   if (error) {
     console.error('Products load error:', error);
     if (error.code === '42P01') {
@@ -223,9 +225,13 @@ async function loadProducts() {
 }
 
 async function loadSales() {
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - 1);
   const { data, error } = await SB.from('sales')
     .select('*')
-    .order('created_at', { ascending: false });
+    .gte('created_at', cutoff.toISOString()) // load last 12 months only
+    .order('created_at', { ascending: false })
+    .limit(5000);          // hard ceiling
   if (error) {
     console.error('Sales load error:', error);
     if (error.code === '42P01') {
