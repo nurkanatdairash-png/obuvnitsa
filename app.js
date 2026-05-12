@@ -2,6 +2,12 @@
 'use strict';
 
 /* ═══════════════════════════════════════════════════════
+   ACCESS CODES — change these to whatever you like
+═══════════════════════════════════════════════════════ */
+const SELLER_CODE = 'prodavets2025';
+const OWNER_CODE  = 'hozayka2025';
+
+/* ═══════════════════════════════════════════════════════
    SUPABASE INIT
 ═══════════════════════════════════════════════════════ */
 const { createClient } = supabase;
@@ -99,7 +105,7 @@ function setSyncState(s) {
 
 window.addEventListener('online', () => {
   setSyncState('loading');
-  if (ST.user) loadAll().then(() => { saveCache(ST.user.id, ST.role); renderAll(); });
+  if (ST.role) loadAll().then(() => { saveCache(ST.role, ST.role); renderAll(); });
 });
 window.addEventListener('offline', () => setSyncState('offline'));
 
@@ -133,136 +139,35 @@ function showApp() {
   app.style.flexDirection = 'column';
 }
 
-function switchAuthTab(tab, btn) {
-  document.querySelectorAll('.auth-tab').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('loginForm').style.display = tab === 'login' ? 'block' : 'none';
-  document.getElementById('signupForm').style.display = tab === 'signup' ? 'block' : 'none';
-  document.getElementById('authErr').className = 'auth-err';
-}
-
 function showAuthErr(msg) {
   const el = document.getElementById('authErr');
   el.textContent = msg;
   el.className = 'auth-err show';
 }
 
-async function doAuthLogin() {
-  const email = gv('loginEmail');
-  const pw = gv('loginPw');
-  if (!email || !pw) { showAuthErr('Введи email и пароль'); return; }
-  const btn = document.getElementById('loginBtn');
-  btn.disabled = true; btn.textContent = 'Входим...';
-  const { error } = await SB.auth.signInWithPassword({ email, password: pw });
-  btn.disabled = false; btn.textContent = 'Войти →';
-  if (error) {
-    const m = error.message || '';
-    if (m.includes('Invalid login credentials') || m.includes('invalid_credentials') || m.includes('wrong password'))
-      showAuthErr('Неверный email или пароль');
-    else if (m.includes('Email not confirmed'))
-      showAuthErr('Email не подтверждён. Найди письмо от Supabase и нажми на ссылку, потом войди снова.');
-    else if (m.includes('Too many requests') || m.includes('rate limit'))
-      showAuthErr('Слишком много попыток. Подожди минуту и попробуй снова.');
-    else if (m.includes('User not found'))
-      showAuthErr('Аккаунт с таким email не найден. Сначала зарегистрируйся.');
-    else
-      showAuthErr('Ошибка входа: ' + m);
-  }
-}
+function doAuthLogin() {
+  const code = (document.getElementById('accessCode')?.value || '').trim();
+  if (!code) { showAuthErr('Введи код'); return; }
 
-// Change this to any secret word only the owner knows
-const OWNER_CODE = 'hozayka2025';
+  let role = null;
+  if (code === OWNER_CODE)  role = 'owner';
+  if (code === SELLER_CODE) role = 'seller';
+  if (!role) { showAuthErr('Неверный код'); return; }
 
-function pickRole(el) {
-  document.querySelectorAll('#signupRolePick .role-opt').forEach(b => b.classList.remove('sel-role'));
-  el.classList.add('sel-role');
-  const codeField = document.getElementById('ownerCodeField');
-  if (codeField) codeField.style.display = el.dataset.val === 'owner' ? 'block' : 'none';
-  document.getElementById('authErr').classList.remove('show');
-}
-
-async function doAuthSignup() {
-  const name = gv('signupName');
-  const email = gv('signupEmail');
-  const pw = gv('signupPw');
-  const roleEl = document.querySelector('#signupRolePick .role-opt.sel-role');
-  const wantsOwner = roleEl?.dataset.val === 'owner';
-
-  if (!name || !email || !pw) { showAuthErr('Заполни все поля'); return; }
-  if (pw.length < 6) { showAuthErr('Пароль минимум 6 символов'); return; }
-  if (wantsOwner && gv('ownerCode') !== OWNER_CODE) {
-    showAuthErr('Неверный код хозяйки'); return;
-  }
-
-  const role = wantsOwner ? 'owner' : 'seller';
-  const btn = document.getElementById('signupBtn');
-  btn.disabled = true; btn.textContent = 'Регистрируем...';
-
-  const { data, error } = await SB.auth.signUp({
-    email, password: pw,
-    options: { data: { full_name: name, role } }
-  });
-
-  btn.disabled = false; btn.textContent = 'Зарегистрироваться →';
-
-  if (error) {
-    const m = error.message || '';
-    if (m.includes('already registered') || m.includes('already been registered')) {
-      // Account exists — silently try to log them in with the password they just typed
-      btn.disabled = true; btn.textContent = 'Входим...';
-      const { data: ld, error: le } = await SB.auth.signInWithPassword({ email, password: pw });
-      btn.disabled = false; btn.textContent = 'Зарегистрироваться →';
-      if (!le && ld?.session) {
-        // Password matched — logged in successfully, onAuthStateChange handles the rest
-        showLoading();
-      } else {
-        // Wrong password or other issue — send them to login tab with email prefilled
-        switchAuthTab('login', document.querySelector('.auth-tab'));
-        const emailEl = document.getElementById('loginEmail');
-        if (emailEl) emailEl.value = email;
-        showAuthErr('Этот email уже зарегистрирован. Введи пароль и войди, или нажми «Забыли пароль?».');
-      }
-    } else if (m.includes('weak') || m.includes('Password')) {
-      showAuthErr('Пароль слишком слабый. Используй минимум 6 символов.');
-    } else {
-      showAuthErr('Ошибка регистрации: ' + m);
-    }
-    return;
-  }
-
-  if (data?.session) {
-    // Email confirmation is OFF — user is signed in immediately.
-    // onAuthStateChange fires automatically and calls initApp.
-    showLoading();
-  } else {
-    // Email confirmation is ON — must verify email before logging in.
-    showAuthInfo('✉️ Письмо отправлено на ' + email + '. Нажми на ссылку в письме, потом вернись и войди.');
-  }
-}
-
-function showAuthInfo(msg) {
-  const el = document.getElementById('authErr');
-  el.textContent = msg;
-  el.className = 'auth-err auth-info show';
-}
-
-async function doForgotPw() {
-  const email = gv('loginEmail');
-  if (!email) { showAuthErr('Введи email в поле выше, потом нажми «Забыли пароль?»'); return; }
-  const { error } = await SB.auth.resetPasswordForEmail(email);
-  if (error) { showAuthErr('Ошибка: ' + error.message); return; }
-  toast('📧 Письмо с ссылкой отправлено на ' + email, 'ok');
+  const name = role === 'owner' ? 'Хозяйка' : 'Продавщица';
+  ST.user    = { id: role, email: name };
+  ST.profile = { role, full_name: name };
+  ST.role    = role;
+  saveLastUser(role);
+  initApp();
 }
 
 async function doLogout() {
   if (ST._pollTimer) { clearInterval(ST._pollTimer); ST._pollTimer = null; }
   ST.realtimeSubs.forEach(sub => SB.removeChannel(sub));
   ST.realtimeSubs = [];
-  if (ST.user && ST.role) {
-    try { localStorage.removeItem(_cacheKey(ST.user.id, ST.role)); } catch {}
-  }
+  try { localStorage.removeItem(_cacheKey(ST.role, ST.role)); } catch {}
   clearLastUser();
-  await SB.auth.signOut();
   ST.user = null; ST.profile = null; ST.role = null;
   ST.products = []; ST.sales = [];
   showAuth();
@@ -271,20 +176,8 @@ async function doLogout() {
 /* ═══════════════════════════════════════════════════════
    LOAD PROFILE
 ═══════════════════════════════════════════════════════ */
-async function loadProfile(userId) {
-  const timeout = new Promise(resolve =>
-    setTimeout(() => resolve({ data: null, error: { message: 'timeout' } }), 5000)
-  );
-  const { data, error } = await Promise.race([
-    SB.from('profiles').select('*').eq('id', userId).single(),
-    timeout,
-  ]);
-  if (error || !data) {
-    ST.profile = { role: 'seller', full_name: ST.user?.email || '' };
-  } else {
-    ST.profile = data;
-  }
-  ST.role = ST.profile.role || 'seller';
+function loadProfile() {
+  // Profile is set at login and restored from localStorage — nothing to fetch
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -445,21 +338,17 @@ function saveCache(userId, role) {
 // ── Last-user record for zero-wait instant boot ──────────
 const _LAST_KEY = 'obuvnitsa_last';
 
-function saveLastUser(userId, role) {
-  try { localStorage.setItem(_LAST_KEY, JSON.stringify({ userId, role })); } catch {}
+function saveLastUser(role) {
+  try { localStorage.setItem(_LAST_KEY, JSON.stringify({ role })); } catch {}
 }
 function clearLastUser() {
   try { localStorage.removeItem(_LAST_KEY); } catch {}
 }
 
-// Peek at Supabase's own session key synchronously (no network needed)
 function _hasLocalSession() {
   try {
-    const raw = localStorage.getItem('sb-rworuvzsqtkljkjszvrw-auth-token');
-    if (!raw) return false;
-    const d = JSON.parse(raw);
-    if (d?.expires_at && d.expires_at < Date.now() / 1000) return false;
-    return !!d?.access_token;
+    const lu = JSON.parse(localStorage.getItem(_LAST_KEY));
+    return !!(lu?.role);
   } catch { return false; }
 }
 
@@ -467,9 +356,12 @@ function _hasLocalSession() {
 function tryInstantBoot() {
   try {
     const lu = JSON.parse(localStorage.getItem(_LAST_KEY));
-    if (!lu?.userId || !lu?.role) return false;
-    ST.role = lu.role;
-    if (!loadCache(lu.userId, lu.role)) return false;
+    if (!lu?.role) return false;
+    const name = lu.role === 'owner' ? 'Хозяйка' : 'Продавщица';
+    ST.role    = lu.role;
+    ST.user    = { id: lu.role, email: name };
+    ST.profile = { role: lu.role, full_name: name };
+    if (!loadCache(lu.role, lu.role)) return false;
     showApp();
     setupRoleUI();
     navTo('dash');
@@ -481,17 +373,14 @@ function tryInstantBoot() {
 /* ═══════════════════════════════════════════════════════
    APP INIT (called after login)
 ═══════════════════════════════════════════════════════ */
-async function initApp(user) {
-  ST.user = user;
-
-  // Only show loading screen if the app isn't already visible (instant boot may have shown it)
+async function initApp() {
   const alreadyVisible = document.getElementById('app').style.display !== 'none';
   if (!alreadyVisible) showLoading();
 
-  await loadProfile(user.id);
-  saveLastUser(user.id, ST.role); // Persist for instant boot next visit
+  loadProfile();
+  saveLastUser(ST.role);
 
-  const hasCached = loadCache(user.id, ST.role);
+  const hasCached = loadCache(ST.role, ST.role);
   if (!alreadyVisible) {
     if (hasCached) {
       showApp();
@@ -500,14 +389,12 @@ async function initApp(user) {
       renderAll();
     }
   } else {
-    // App already showing from instant boot — just update role UI and re-render
     setupRoleUI();
     renderAll();
   }
 
-  // Always fetch fresh data in background
   await loadAll();
-  saveCache(user.id, ST.role);
+  saveCache(ST.role, ST.role);
 
   if (!hasCached && !alreadyVisible) {
     showApp();
@@ -520,7 +407,7 @@ async function initApp(user) {
   if (ST._pollTimer) clearInterval(ST._pollTimer);
   ST._pollTimer = setInterval(async () => {
     await loadAll();
-    saveCache(user.id, ST.role);
+    saveCache(ST.role, ST.role);
     renderAll();
   }, CFG.POLL);
 }
@@ -531,7 +418,7 @@ function setupRoleUI() {
   const nameEl = document.getElementById('tbUserName');
   chip.textContent = role === 'owner' ? '👑 Хозяйка' : '🧑‍💼 Продавщица';
   chip.className = 'tb-role ' + role;
-  if (nameEl) nameEl.textContent = ST.profile?.full_name || ST.user?.email || '';
+  if (nameEl) nameEl.textContent = ST.profile?.full_name || '';
 
   // Show/hide owner elements
   document.querySelectorAll('.owner-elem').forEach(el => {
@@ -567,8 +454,6 @@ function renderProfileCard() {
   const el = document.getElementById('profileCard');
   if (!el) return;
   el.innerHTML = `
-    <div class="info-row"><span class="ir-lbl">Имя</span><span class="ir-val">${esc(ST.profile?.full_name || '—')}</span></div>
-    <div class="info-row"><span class="ir-lbl">Email</span><span class="ir-val">${esc(ST.user?.email || '—')}</span></div>
     <div class="info-row"><span class="ir-lbl">Роль</span><span class="ir-val">${ST.role === 'owner' ? '👑 Хозяйка' : '🧑‍💼 Продавщица'}</span></div>`;
 }
 
@@ -941,8 +826,8 @@ async function submitQS() {
     note: note || '',
     sale_date: new Date().toISOString().slice(0, 10),
     sale_time: fmtT(new Date()),
-    seller_id: ST.user.id,
-    seller_name: ST.profile?.full_name || ST.user.email || '',
+    seller_id: null,
+    seller_name: ST.profile?.full_name || '',
   };
 
   // Only add product_id if it's a valid UUID
@@ -1313,8 +1198,8 @@ async function submitSale() {
     note: note || '',
     sale_date: new Date().toISOString().slice(0, 10),
     sale_time: fmtT(new Date()),
-    seller_id: ST.user.id,
-    seller_name: ST.profile?.full_name || ST.user.email || '',
+    seller_id: null,
+    seller_name: ST.profile?.full_name || '',
   };
 
   if (prod.id && prod.id.includes('-')) {
@@ -1663,7 +1548,6 @@ function renderDbStats() {
   el.innerHTML = `
     <div class="info-row"><span class="ir-lbl">Товаров (строк)</span><span class="ir-val">${ST.products.length}</span></div>
     <div class="info-row"><span class="ir-lbl">Продаж</span><span class="ir-val">${ST.sales.length}</span></div>
-    <div class="info-row"><span class="ir-lbl">Пользователь</span><span class="ir-val">${esc(ST.user?.email || '—')}</span></div>
     <div class="info-row"><span class="ir-lbl">Роль</span><span class="ir-val">${ST.role === 'owner' ? '👑 Хозяйка' : '🧑‍💼 Продавщица'}</span></div>
     <div class="info-row"><span class="ir-lbl">Хранилище</span><span class="ir-val">☁️ Supabase</span></div>`;
 }
@@ -1705,20 +1589,35 @@ async function clearSales() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   BOOTSTRAP — Auth state listener
+   BOOTSTRAP
 ═══════════════════════════════════════════════════════ */
 (async () => {
   try {
-    // Load saved settings
-    try { const s = localStorage.getItem('obuvnitsa_sett'); if (s) ST.sett = { ...ST.sett, ...JSON.parse(s) }; } catch (e) {}
+    try { const s = localStorage.getItem('obuvnitsa_sett'); if (s) ST.sett = { ...ST.sett, ...JSON.parse(s) }; } catch {}
 
-    // 1. Try to show app instantly from localStorage (zero network, zero wait)
+    // 1. Try instant boot from cached data
     const booted = tryInstantBoot();
 
-    // 2. If no cache: show auth immediately for no-session users, loading for session users
     if (!booted) {
-      if (_hasLocalSession()) showLoading(); // Has a session — will load shortly
-      else showAuth();                        // No session — show login right away
+      if (_hasLocalSession()) {
+        // Saved role exists but no cached data — restore role and load fresh
+        const lu = JSON.parse(localStorage.getItem(_LAST_KEY) || 'null');
+        if (lu?.role) {
+          const name = lu.role === 'owner' ? 'Хозяйка' : 'Продавщица';
+          ST.role    = lu.role;
+          ST.user    = { id: lu.role, email: name };
+          ST.profile = { role: lu.role, full_name: name };
+          showLoading();
+          await initApp();
+        } else {
+          showAuth();
+        }
+      } else {
+        showAuth();
+      }
+    } else {
+      // Booted from cache — refresh data in background
+      await initApp();
     }
 
     // Safety: if still on loading screen after 9s, fall back to auth
@@ -1726,31 +1625,9 @@ async function clearSales() {
       if (document.getElementById('loadingPage').style.display !== 'none') {
         clearLastUser();
         showAuth();
-        toast('Медленное соединение. Войдите повторно.', 'err');
+        toast('Медленное соединение. Введи код повторно.', 'err');
       }
     }, 9000);
-
-    // Listen to auth state — only call initApp on genuine sign-in
-    SB.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT' || !session?.user) {
-        clearLastUser();
-        showAuth();
-        return;
-      }
-      if (!ST.user || ST.user.id !== session.user.id) {
-        await initApp(session.user);
-      }
-    });
-
-    // Validate session (race with 8s timeout so it never hangs)
-    const { data: { session } } = await Promise.race([
-      SB.auth.getSession(),
-      new Promise(resolve => setTimeout(() => resolve({ data: { session: null } }), 8000)),
-    ]);
-    if (!session) {
-      clearLastUser();
-      showAuth();
-    }
 
   } catch (e) {
     console.error('Boot error:', e);

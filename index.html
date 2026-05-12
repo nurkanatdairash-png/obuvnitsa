@@ -118,59 +118,16 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     <div class="auth-brand">
       <span class="auth-icon">👟</span>
       <div class="auth-title">Обувница <em>PRO</em></div>
-      <div class="auth-sub">Система учёта обуви · Войди чтобы начать</div>
+      <div class="auth-sub">Введи код доступа</div>
     </div>
     <div class="auth-card">
-      <div class="auth-tabs">
-        <button class="auth-tab active" onclick="switchAuthTab('login',this)">Войти</button>
-        <button class="auth-tab" onclick="switchAuthTab('signup',this)">Регистрация</button>
-      </div>
       <div class="auth-err" id="authErr"></div>
-
-      <!-- LOGIN -->
-      <div id="loginForm">
-        <div class="auth-field">
-          <div class="auth-lbl">Email</div>
-          <input class="auth-inp" type="email" id="loginEmail" placeholder="email@example.com" autocomplete="email">
-        </div>
-        <div class="auth-field">
-          <div class="auth-lbl">Пароль</div>
-          <input class="auth-inp" type="password" id="loginPw" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doAuthLogin()">
-        </div>
-        <button class="auth-btn" id="loginBtn" onclick="doAuthLogin()">Войти →</button>
-        <button class="auth-link" onclick="doForgotPw()">Забыли пароль?</button>
+      <div class="auth-field">
+        <div class="auth-lbl">Код</div>
+        <input class="auth-inp" type="password" id="accessCode" placeholder="••••••" autocomplete="off"
+               onkeydown="if(event.key==='Enter')doAuthLogin()" autofocus>
       </div>
-
-      <!-- SIGNUP -->
-      <div id="signupForm" style="display:none">
-        <div class="auth-field">
-          <div class="auth-lbl">Имя</div>
-          <input class="auth-inp" type="text" id="signupName" placeholder="Имя пользователя">
-        </div>
-        <div class="auth-field">
-          <div class="auth-lbl">Email</div>
-          <input class="auth-inp" type="email" id="signupEmail" placeholder="email@example.com" autocomplete="email">
-        </div>
-        <div class="auth-field">
-          <div class="auth-lbl">Пароль</div>
-          <input class="auth-inp" type="password" id="signupPw" placeholder="Минимум 6 символов" autocomplete="new-password">
-        </div>
-        <div class="auth-field">
-          <div class="auth-lbl">Роль</div>
-          <div class="role-pick" id="signupRolePick">
-            <button type="button" class="role-opt sel-role" data-val="seller" onclick="pickRole(this)"><span class="role-ico">🧑‍💼</span><span class="role-lbl">Продавщица</span></button>
-            <button type="button" class="role-opt" data-val="owner" onclick="pickRole(this)"><span class="role-ico">👑</span><span class="role-lbl">Хозяйка</span></button>
-          </div>
-        </div>
-        <div class="auth-field" id="ownerCodeField" style="display:none">
-          <div class="auth-lbl">🔑 Код хозяйки</div>
-          <input class="auth-inp" type="password" id="ownerCode" placeholder="Секретный код" autocomplete="off">
-          <div style="font-size:.68rem;color:rgba(255,255,255,.3);margin-top:5px">Только хозяйка знает этот код</div>
-        </div>
-        <button class="auth-btn" id="signupBtn" onclick="doAuthSignup()">Зарегистрироваться →</button>
-      </div>
-
-      <div class="auth-info">Данные хранятся в облаке · Доступ с любого устройства</div>
+      <button class="auth-btn" id="loginBtn" onclick="doAuthLogin()">Войти →</button>
     </div>
   </div>
 </div>
