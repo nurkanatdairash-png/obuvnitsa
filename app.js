@@ -46,6 +46,14 @@ const CFG = {
 
 let _saleInProgress = false;
 let _stockInProgress = false;
+let _soldMapCache = null;
+
+// Escape closes any open modal or confirm dialog
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (document.getElementById('qsModal')?.classList.contains('show')) { closeModal('qsModal'); return; }
+  if (document.getElementById('confOvl')?.classList.contains('show')) { confRes(false); return; }
+});
 
 /* ═══════════════════════════════════════════════════════
    UTILS
@@ -214,6 +222,7 @@ async function loadProducts() {
     }
     return;
   }
+  _soldMapCache = null;
   ST.products = (data || []).map(p => ({
     id: p.id,
     rowId: p.row_id || p.id,
@@ -255,6 +264,7 @@ async function loadSales() {
     }
     return;
   }
+  _soldMapCache = null;
   ST.sales = (data || []).map(s => ({
     id: s.id,
     productRowId: s.product_row_id || '',
@@ -521,19 +531,18 @@ function navTo(p) {
    COMPUTED HELPERS
 ═══════════════════════════════════════════════════════ */
 function buildSoldMap() {
+  if (_soldMapCache) return _soldMapCache;
   const m = {};
   ST.sales.forEach(s => {
-    // Track by productRowId (most accurate)
     if (s.productRowId) {
       m[s.productRowId] = (m[s.productRowId] || 0) + s.qty;
     }
-    // Also track by name+size (fallback)
     const k2 = s.name + '||' + String(s.size);
     m[k2] = (m[k2] || 0) + s.qty;
-    // Also track by name+size+color
     const k3 = s.name + '||' + String(s.size) + '||' + (s.color || '');
     m[k3] = (m[k3] || 0) + s.qty;
   });
+  _soldMapCache = m;
   return m;
 }
 function getRem(prod, sm) {
@@ -593,6 +602,7 @@ function byDateRange(arr, from, to, field = 'date') {
    RENDER ALL
 ═══════════════════════════════════════════════════════ */
 function renderAll() {
+  _soldMapCache = null;
   renderDash(); renderStock(); renderArriveRecent();
   renderSalesForm(); renderSalesTbl();
   renderCalendar(); renderReports(); renderHistory();
@@ -810,8 +820,12 @@ function renderStock() {
 ═══════════════════════════════════════════════════════ */
 function openQS(name, color, size, rowId, buyPriceDisplay, buyPriceRaw, sellPrice) {
   ST.qsData = { name, color, size: +size, rowId, buyPrice: buyPriceDisplay, buyPriceRaw, sellPrice };
+  const sm = buildSoldMap();
+  const prod = ST.products.find(p => p.rowId === rowId) || ST.products.find(p => p.name === name && Number(p.size) === Number(size) && p.color === color);
+  const rem = prod ? getRem(prod, sm) : '?';
+  const remBadge = rem <= 0 ? `<span class="bdg b-red">🔴 Нет в наличии</span>` : rem === 1 ? `<span class="bdg b-gold">🟡 Последняя пара!</span>` : `<span class="bdg b-green">🟢 Осталось: ${rem} пар</span>`;
   const pc = document.getElementById('qsProdCard');
-  if (pc) pc.innerHTML = `<div class="qs-prod-name">${esc(name)}</div><div class="qs-prod-meta">Размер ${size} · ${esc(color)}</div>`;
+  if (pc) pc.innerHTML = `<div class="qs-prod-name">${esc(name)}</div><div class="qs-prod-meta">Размер ${size} · ${esc(color)}</div><div style="margin-top:6px">${remBadge}</div>`;
   const ph = document.getElementById('qsPriceHint');
   if (ph) ph.textContent = 'Рекомендуемая: ' + fmt(sellPrice);
   document.getElementById('qsPrice').value = sellPrice;
@@ -823,6 +837,7 @@ function openQS(name, color, size, rowId, buyPriceDisplay, buyPriceRaw, sellPric
   document.querySelector('#qsPaySel .pay-opt:first-child').classList.add('sel-pay');
   calcQS();
   openModal('qsModal');
+  setTimeout(() => document.getElementById('qsPrice')?.focus(), 60);
 }
 
 function calcQS() {
@@ -846,6 +861,11 @@ async function submitQS() {
   if (qty < 1) { toast('⚠️ Кол-во должно быть минимум 1', 'err'); return; }
   if (disc < 0) { toast('⚠️ Скидка не может быть отрицательной', 'err'); return; }
   if (disc > qty * price) { toast('⚠️ Скидка не может превышать сумму продажи', 'err'); return; }
+  if (payment === 'В долг' && !cust) {
+    toast('⚠️ При оплате «В долг» укажи имя покупателя!', 'err');
+    document.getElementById('qsCust')?.focus();
+    return;
+  }
 
   // Find product - try multiple ways
   const sm = buildSoldMap();
@@ -909,6 +929,7 @@ async function submitQS() {
   toast(`✅ Продано! ${prod.name} р.${prod.size} — ${fmt(total)}`, 'ok');
   ST.qsData = null;
   await loadSales();
+  saveCache(ST.role, ST.role);
   renderAll();
 }
 
@@ -922,6 +943,7 @@ async function delProduct(id) {
   if (error) { toast('❌ Ошибка: ' + error.message, 'err'); return; }
   toast('✅ Удалено', 'ok');
   await loadProducts();
+  saveCache(ST.role, ST.role);
   renderAll();
 }
 
@@ -953,6 +975,7 @@ async function openDeleteModal() {
   if (error) { toast('❌ Ошибка: ' + error.message, 'err'); return; }
   toast('✅ Товар удалён', 'ok');
   await loadProducts();
+  saveCache(ST.role, ST.role);
   renderAll();
 }
 
@@ -1040,6 +1063,28 @@ async function submitArrive() {
   }
   if (!sizes.length) { toast('⚠️ Нет размеров с кол-вом > 0', 'err'); return; }
 
+  // Duplicate detection: warn if any size already exists in current stock
+  const dups = sizes.filter(sz => ST.products.some(p =>
+    p.name.toLowerCase() === name.toLowerCase() &&
+    (p.color || '').toLowerCase() === color.toLowerCase() &&
+    Number(p.size) === sz.size
+  ));
+  if (dups.length) {
+    const dupSizes = dups.map(d => d.size).join(', ');
+    const ok = await confDialog('⚠️', 'Возможный дубликат!',
+      `${name} ${color} р.${dupSizes} уже есть на складе. Добавить всё равно?`,
+      'Всё равно добавить', 'btn-primary');
+    if (!ok) return;
+  }
+
+  // Negative margin warning (owner only)
+  if (ST.role === 'owner' && buy > 0 && sell > 0 && sell < buy) {
+    const ok = await confDialog('⚠️', 'Цена продажи ниже закупки!',
+      `Продажная цена ${fmt(sell)} < закупочная ${fmt(buy)}. Торговать в убыток?`,
+      'Добавить', 'btn-danger');
+    if (!ok) return;
+  }
+
   const series = from + (end > from ? '–' + end : '');
   const arriveDate = gv('aArriveDate') || todayISO();
   const baseRowId = Date.now() + '_' + Math.random().toString(36).slice(2, 8);
@@ -1073,6 +1118,7 @@ async function submitArrive() {
   toast(`✅ ${name} (${sizes.length} разм., ${totalPairs} пар) добавлен!`, 'ok');
   clearArrive();
   await loadProducts();
+  saveCache(ST.role, ST.role);
   renderAll();
 }
 
@@ -1084,6 +1130,7 @@ function clearArrive() {
   const box = document.getElementById('szChips'); if (box) box.innerHTML = '';
   const pc = document.getElementById('prevCard'); if (pc) pc.style.display = 'none';
   const mb = document.getElementById('aMarginBox'); if (mb) { mb.textContent = '—'; mb.style.color = 'var(--muted)'; }
+  setTimeout(() => document.getElementById('aName')?.focus(), 50);
 }
 
 function renderArriveRecent() {
@@ -1245,6 +1292,11 @@ async function submitSale() {
   if (!price) { toast('⚠️ Введи цену продажи', 'err'); return; }
   if (disc < 0) { toast('⚠️ Скидка не может быть отрицательной', 'err'); return; }
   if (disc > qty * price) { toast('⚠️ Скидка не может превышать сумму продажи', 'err'); return; }
+  if (payment === 'В долг' && !cust) {
+    toast('⚠️ При оплате «В долг» укажи имя покупателя!', 'err');
+    document.getElementById('saleCust')?.focus();
+    return;
+  }
 
   const [name, color] = combo.split('||');
   const [size, rowId, buyPRaw] = sizeVal.split('|');
@@ -1318,7 +1370,9 @@ async function submitSale() {
   document.getElementById('saleSumBox').classList.remove('show');
   toast(`✅ Продано! ${prod.name} р.${size} — ${fmt(total)}`, 'ok');
   await loadSales();
+  saveCache(ST.role, ST.role);
   renderAll();
+  setTimeout(() => document.getElementById('saleProd')?.focus(), 80);
 }
 
 function renderSalesTbl() {
@@ -1329,7 +1383,7 @@ function renderSalesTbl() {
   if (q) sales = sales.filter(s => s.name.toLowerCase().includes(q) || (s.customer || '').toLowerCase().includes(q) || String(s.size).includes(q));
   const cnt = document.getElementById('salesCnt'); if (cnt) cnt.textContent = `${sales.length} записей`;
   const tbody = document.getElementById('salesTbody'); if (!tbody) return;
-  if (!sales.length) { tbody.innerHTML = `<tr><td colspan="${ST.role === 'owner' ? 14 : 11}" class="tbl-empty"><div class="tbl-ei">💰</div><p>Нет продаж</p></td></tr>`; return; }
+  if (!sales.length) { tbody.innerHTML = `<tr><td colspan="${ST.role === 'owner' ? 15 : 12}" class="tbl-empty"><div class="tbl-ei">💰</div><p>Нет продаж</p></td></tr>`; return; }
   tbody.innerHTML = sales.map((s, i) => `
     <tr>
       <td class="td-muted">${i + 1}</td>
@@ -1338,6 +1392,7 @@ function renderSalesTbl() {
       <td><strong>${s.size}</strong></td>
       <td>${esc(s.color || '')}</td>
       <td>${s.qty}</td>
+      <td class="td-muted">${s.discount > 0 ? fmt(s.discount) : '—'}</td>
       ${ST.role === 'owner' ? `<td class="td-green">${fmt(s.total)}</td>` : ''}
       <td class="owner-elem" style="${ST.role === 'owner' ? '' : 'display:none'}">${fmt((s.buyPriceRaw || 0) * s.qty)}</td>
       <td class="owner-elem" style="${ST.role === 'owner' ? 'color:var(--gold);font-weight:800' : 'display:none'}">${fmt(s.profitRaw || 0)}</td>
@@ -1356,6 +1411,7 @@ async function delSale(id) {
   if (error) { toast('❌ Ошибка: ' + error.message, 'err'); return; }
   toast('Продажа удалена', 'ok');
   await loadSales();
+  saveCache(ST.role, ST.role);
   renderAll();
 }
 
@@ -1656,7 +1712,7 @@ function exportSalesCSV() {
   }
   const rows = [['Дата', 'Время', 'Товар', 'Размер', 'Цвет', 'Кол-во', 'Цена', 'Закупка', 'Прибыль', 'Оплата', 'Покупатель', 'Заметки', 'Продавец']];
   sales.forEach(s => rows.push([s.date, s.time || '', s.name, s.size, s.color || '', s.qty, s.total, (s.buyPriceRaw || 0) * s.qty, s.profitRaw || 0, s.payment, s.customer || '', s.note || '', s.sellerName || '']));
-  dlCSV(rows, 'sales_' + new Date().toISOString().slice(0, 10) + '.csv');
+  dlCSV(rows, 'sales_' + todayISO() + '.csv');
   toast(`⬇ Экспорт готов (${sales.length} записей)`, 'ok');
 }
 function exportStockCSV() {
@@ -1691,6 +1747,7 @@ async function clearSales() {
   if (error) { toast('❌ Ошибка: ' + error.message, 'err'); return; }
   toast('Все продажи удалены', 'ok');
   await loadSales();
+  saveCache(ST.role, ST.role);
   renderAll();
 }
 
