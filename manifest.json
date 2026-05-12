@@ -2,14 +2,14 @@
   "name": "Обувница PRO",
   "short_name": "Обувница",
   "description": "Управление складом и продажами обуви",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#0f172a",
-  "theme_color": "#6366f1",
+  "background_color": "#f2f0ec",
+  "theme_color": "#c8521a",
   "icons": [
     {
-      "src": "/icon.svg",
+      "src": "./icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"

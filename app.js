@@ -53,6 +53,8 @@ const fmt = n => (n || 0).toLocaleString(CFG.LOC) + ' ' + CFG.CUR;
 const fmtD = d => d.toLocaleDateString(CFG.LOC, { day: '2-digit', month: '2-digit', year: 'numeric' });
 const fmtT = d => d.toLocaleTimeString(CFG.LOC, { hour: '2-digit', minute: '2-digit' });
 const todayS = () => fmtD(new Date());
+// Returns YYYY-MM-DD in LOCAL time (unlike toISOString which uses UTC — wrong after midnight in UTC+5)
+const todayISO = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
 function parseD(s) {
   if (!s) return new Date(0);
   // ISO date string (YYYY-MM-DD) from Supabase
@@ -167,6 +169,7 @@ function doAuthLogin() {
 }
 
 async function doLogout() {
+  _saleInProgress = false;
   if (ST._pollTimer) { clearInterval(ST._pollTimer); ST._pollTimer = null; }
   ST.realtimeSubs.forEach(sub => SB.removeChannel(sub));
   ST.realtimeSubs = [];
@@ -186,7 +189,7 @@ function loadProfile() {
 
 function initArriveDateDefault() {
   const el = document.getElementById('aArriveDate');
-  if (el && !el.value) el.value = new Date().toISOString().slice(0, 10);
+  if (el && !el.value) el.value = todayISO();
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -277,12 +280,11 @@ async function loadSales() {
 async function loadAll() {
   if (!navigator.onLine) { setSyncState('offline'); return; }
   setSyncState('loading');
-  const timeout = new Promise(resolve => setTimeout(resolve, 10000));
-  await Promise.race([
-    Promise.all([loadProducts(), loadSales()]),
-    timeout,
+  const result = await Promise.race([
+    Promise.all([loadProducts(), loadSales()]).then(() => 'ok'),
+    new Promise(r => setTimeout(() => r('timeout'), 10000)),
   ]);
-  setSyncState(navigator.onLine ? 'ok' : 'offline');
+  setSyncState(result === 'timeout' ? 'err' : navigator.onLine ? 'ok' : 'offline');
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -560,8 +562,9 @@ function byDateRange(arr, from, to, field = 'date') {
   if (!from && !to) return arr;
   return arr.filter(x => {
     const d = parseD(x[field]);
-    if (from && d < new Date(from)) return false;
-    if (to) { const t = new Date(to); t.setDate(t.getDate() + 1); if (d >= t) return false; }
+    // Use T00:00:00 so date inputs are compared as LOCAL midnight, not UTC midnight
+    if (from && d < new Date(from + 'T00:00:00')) return false;
+    if (to) { const t = new Date(to + 'T00:00:00'); t.setDate(t.getDate() + 1); if (d >= t) return false; }
     return true;
   });
 }
@@ -860,7 +863,7 @@ async function submitQS() {
     payment: payment,
     customer: cust || '',
     note: note || '',
-    sale_date: new Date().toISOString().slice(0, 10),
+    sale_date: todayISO(),
     sale_time: fmtT(new Date()),
     seller_id: null,
     seller_name: ST.profile?.full_name || '',
@@ -1003,8 +1006,7 @@ async function submitArrive() {
   if (!sizes.length) { toast('⚠️ Нет размеров с кол-вом > 0', 'err'); return; }
 
   const series = from + (end > from ? '–' + end : '');
-  const today = new Date().toISOString().slice(0, 10);
-  const arriveDate = gv('aArriveDate') || today;
+  const arriveDate = gv('aArriveDate') || todayISO();
   const baseRowId = Date.now() + '_' + Math.random().toString(36).slice(2, 8);
 
   const rows = sizes.map((sz, i) => ({
@@ -1042,7 +1044,7 @@ async function submitArrive() {
 function clearArrive() {
   ['aCode', 'aName', 'aBrand', 'aColor', 'aBuy', 'aSell', 'aSupp', 'aNotes', 'szFrom', 'szTo'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
   ['aType', 'aMat', 'aSeason', 'aAud'].forEach(id => { const e = document.getElementById(id); if (e) e.selectedIndex = 0; });
-  const nd = document.getElementById('aArriveDate'); if (nd) nd.value = new Date().toISOString().slice(0, 10);
+  const nd = document.getElementById('aArriveDate'); if (nd) nd.value = todayISO();
   const ta = document.getElementById('aNotes'); if (ta) ta.value = '';
   const box = document.getElementById('szChips'); if (box) box.innerHTML = '';
   const pc = document.getElementById('prevCard'); if (pc) pc.style.display = 'none';
@@ -1243,7 +1245,7 @@ async function submitSale() {
     payment: payment,
     customer: cust || '',
     note: note || '',
-    sale_date: new Date().toISOString().slice(0, 10),
+    sale_date: todayISO(),
     sale_time: fmtT(new Date()),
     seller_id: null,
     seller_name: ST.profile?.full_name || '',
@@ -1425,10 +1427,11 @@ function setRepPrd(p, btn) {
   renderReports();
 }
 function setDateRange(days) {
-  const to = new Date(), from = new Date(to - days * 864e5);
+  const to = new Date();
+  const from = new Date(to.getFullYear(), to.getMonth(), to.getDate() - days);
   const rf = document.getElementById('repFrom'), rt = document.getElementById('repTo');
-  if (rf) rf.value = from.toISOString().slice(0, 10);
-  if (rt) rt.value = to.toISOString().slice(0, 10);
+  if (rf) rf.value = from.getFullYear() + '-' + String(from.getMonth()+1).padStart(2,'0') + '-' + String(from.getDate()).padStart(2,'0');
+  if (rt) rt.value = todayISO();
   renderReports();
 }
 function clearRepDates() {

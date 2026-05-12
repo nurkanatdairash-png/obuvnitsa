@@ -183,6 +183,40 @@ GRANT ALL ON public.products TO authenticated;
 GRANT ALL ON public.sales    TO authenticated;
 GRANT EXECUTE ON FUNCTION public.is_owner() TO authenticated;
 
+-- Anon grants — needed because the app uses code-based auth (no JWT), so
+-- all Supabase requests arrive as the anon role, not authenticated.
+GRANT USAGE ON SCHEMA public TO anon;
+GRANT SELECT, INSERT, DELETE ON public.products TO anon;
+GRANT SELECT, INSERT, DELETE ON public.sales    TO anon;
+
+
+-- ── 9a. ANON RLS POLICIES ────────────────────────────────
+-- Without these, anon users (sellers/owner via code auth) can't read or write data.
+
+DROP POLICY IF EXISTS "anon_products_select" ON public.products;
+CREATE POLICY "anon_products_select"
+  ON public.products FOR SELECT TO anon USING (true);
+
+DROP POLICY IF EXISTS "anon_products_insert" ON public.products;
+CREATE POLICY "anon_products_insert"
+  ON public.products FOR INSERT TO anon WITH CHECK (true);
+
+DROP POLICY IF EXISTS "anon_products_delete" ON public.products;
+CREATE POLICY "anon_products_delete"
+  ON public.products FOR DELETE TO anon USING (true);
+
+DROP POLICY IF EXISTS "anon_sales_select" ON public.sales;
+CREATE POLICY "anon_sales_select"
+  ON public.sales FOR SELECT TO anon USING (true);
+
+DROP POLICY IF EXISTS "anon_sales_insert" ON public.sales;
+CREATE POLICY "anon_sales_insert"
+  ON public.sales FOR INSERT TO anon WITH CHECK (true);
+
+DROP POLICY IF EXISTS "anon_sales_delete" ON public.sales;
+CREATE POLICY "anon_sales_delete"
+  ON public.sales FOR DELETE TO anon USING (true);
+
 
 -- ── 9. BACKFILL PROFILES ──────────────────────────────────
 -- Creates missing profiles for users who registered before the trigger existed

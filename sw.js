@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE = 'obuvnitsa-v1';
+const CACHE = 'obuvnitsa-v3';
 
 // self.registration.scope is the base URL dynamically —
 // works for both root deployments (Netlify) and subdirectory deployments (GitHub Pages /site/)
@@ -12,6 +12,7 @@ const SHELL = [
   BASE + 'styles.css',
   BASE + 'app.js',
   BASE + 'icon.svg',
+  BASE + 'manifest.json',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.50.0/dist/umd/supabase.min.js',
 ];
 
