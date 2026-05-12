@@ -74,7 +74,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       <div class="fg fg-2 mb-12">
         <div class="field">
           <div class="flbl">Скидка ₸</div>
-          <input class="inp" type="number" id="qsDisc" placeholder="0" oninput="calcQS()">
+          <input class="inp" type="number" id="qsDisc" placeholder="0" min="0" oninput="calcQS()">
         </div>
         <div class="field">
           <div class="flbl">Покупатель</div>
@@ -464,7 +464,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
                   <div class="fg fg-2 mb-12">
                     <div class="field">
                       <div class="flbl">Скидка ₸</div>
-                      <input class="inp" type="number" id="saleDisc" placeholder="0" oninput="calcSaleSum()">
+                      <input class="inp" type="number" id="saleDisc" placeholder="0" min="0" oninput="calcSaleSum()">
                     </div>
                     <div class="field">
                       <div class="flbl">Покупатель</div>
@@ -727,14 +727,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 <script>
 (function () {
   try {
-    // Does Supabase have a non-expired session stored locally?
-    var raw = localStorage.getItem('sb-rworuvzsqtkljkjszvrw-auth-token');
-    if (!raw) return; // No session — authPage already visible by default
-    var d = JSON.parse(raw);
-    var ok = d && d.access_token && (!d.expires_at || d.expires_at > Date.now() / 1000);
-    if (!ok) return;
-
-    // User has a valid local session — switch to loading screen immediately
+    var lu = JSON.parse(localStorage.getItem('obuvnitsa_last'));
+    if (!lu || !lu.role) return;
     document.getElementById('authPage').style.display = 'none';
     document.getElementById('loadingPage').style.display = 'flex';
   } catch (e) {}

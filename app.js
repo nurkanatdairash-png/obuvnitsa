@@ -44,6 +44,8 @@ const CFG = {
   POLL: 30000,
 };
 
+let _saleInProgress = false;
+
 /* ═══════════════════════════════════════════════════════
    UTILS
 ═══════════════════════════════════════════════════════ */
@@ -303,19 +305,21 @@ function setupRealtime() {
 
   const productsSub = SB.channel('products-changes')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, async () => {
+      if (!ST.role) return;
       await loadProducts();
       renderAll();
       setSyncState('ok');
     })
-    .subscribe();
+    .subscribe((status, err) => { if (err) console.warn('Realtime products error:', err); });
 
   const salesSub = SB.channel('sales-changes')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, async () => {
+      if (!ST.role) return;
       await loadSales();
       renderAll();
       setSyncState('ok');
     })
-    .subscribe();
+    .subscribe((status, err) => { if (err) console.warn('Realtime sales error:', err); });
 
   ST.realtimeSubs = [productsSub, salesSub];
 }
@@ -702,7 +706,7 @@ function renderStock() {
   if (tc) tc.innerHTML = types.map(t => {
     const k = t === 'Все' ? 'all' : t;
     const cnt = t === 'Все' ? groups.length : groups.filter(g => g.type === t).length;
-    return `<button class="fchip ${ST.stockFilt === k ? 'active' : ''}" onclick="ST.stockFilt='${k}';renderStock()">${esc(t)} <span style="opacity:.5;font-size:.65rem">(${cnt})</span></button>`;
+    return `<button class="fchip ${ST.stockFilt === k ? 'active' : ''}" onclick="ST.stockFilt=${JSON.stringify(k)};renderStock()">${esc(t)} <span style="opacity:.5;font-size:.65rem">(${cnt})</span></button>`;
   }).join('');
 
   if (ST.stockFilt !== 'all') groups = groups.filter(g => g.type === ST.stockFilt);
@@ -797,10 +801,10 @@ function openQS(name, color, size, rowId, buyPriceDisplay, buyPriceRaw, sellPric
 }
 
 function calcQS() {
-  const price = gn('qsPrice'), qty = gi('qsQty') || 1, disc = gn('qsDisc');
+  const price = gn('qsPrice'), qty = gi('qsQty') || 1, disc = Math.max(0, gn('qsDisc'));
   if (!ST.qsData || !price) { document.getElementById('qsSummary').classList.remove('show'); return; }
   const total = Math.max(0, qty * price - disc);
-  const profit = qty * (price - (ST.qsData.buyPriceRaw || 0)) - disc;
+  const profit = total - qty * (ST.qsData.buyPriceRaw || 0);
   const margin = price > 0 ? Math.round((price - (ST.qsData.buyPriceRaw || 0)) / price * 100) : 0;
   document.getElementById('qsSummary').classList.add('show');
   document.getElementById('qsTotal').textContent = fmt(total);
@@ -809,11 +813,14 @@ function calcQS() {
 }
 
 async function submitQS() {
+  if (_saleInProgress) return;
   if (!ST.qsData) { closeModal('qsModal'); return; }
   const price = gn('qsPrice'), qty = gi('qsQty') || 1, disc = gn('qsDisc');
   const payment = getSelPay('qsPaySel'), cust = gv('qsCust'), note = gv('qsNote');
   if (!price) { toast('⚠️ Введи цену продажи!', 'err'); return; }
   if (qty < 1) { toast('⚠️ Кол-во должно быть минимум 1', 'err'); return; }
+  if (disc < 0) { toast('⚠️ Скидка не может быть отрицательной', 'err'); return; }
+  if (disc > qty * price) { toast('⚠️ Скидка не может превышать сумму продажи', 'err'); return; }
 
   // Find product - try multiple ways
   const sm = buildSoldMap();
@@ -833,6 +840,7 @@ async function submitQS() {
   const buyPriceRaw = prod.buyPriceRaw || ST.qsData.buyPriceRaw || 0;
   const profit = qty * (price - buyPriceRaw) - disc;
 
+  _saleInProgress = true;
   const btn = document.getElementById('qsSubmitBtn');
   btn.disabled = true; btn.textContent = 'Сохраняем...';
 
@@ -863,6 +871,7 @@ async function submitQS() {
 
   const { data, error } = await SB.from('sales').insert([saleData]).select();
 
+  _saleInProgress = false;
   btn.disabled = false; btn.textContent = '✅ Продано!';
 
   if (error) {
@@ -965,6 +974,7 @@ function updatePrev() {
 }
 
 async function submitArrive() {
+  if (_saleInProgress) return;
   const name = gv('aName'), brand = gv('aBrand'), color = gv('aColor'), type = gv('aType');
   const sell = gn('aSell'), code = gv('aCode'), mat = gv('aMat');
   const season = gv('aSeason'), aud = gv('aAud'), supp = gv('aSupp'), notes = gv('aNotes');
@@ -1009,11 +1019,13 @@ async function submitArrive() {
     arrive_date: arriveDate,
   }));
 
+  _saleInProgress = true;
   const btn = document.getElementById('arriveSubmitBtn');
   btn.disabled = true; btn.textContent = 'Сохраняем...';
 
   const { error } = await SB.from('products').insert(rows);
 
+  _saleInProgress = false;
   btn.disabled = false; btn.textContent = '➕ Добавить на склад';
 
   if (error) { toast('❌ Ошибка: ' + error.message, 'err'); return; }
@@ -1171,19 +1183,20 @@ function onSaleSize() {
 }
 
 function calcSaleSum() {
-  const price = gn('salePrice'), qty = gi('saleQty') || 1, disc = gn('saleDisc');
+  const price = gn('salePrice'), qty = gi('saleQty') || 1, disc = Math.max(0, gn('saleDisc'));
   const val = gv('saleSize');
   const sb = document.getElementById('saleSumBox');
   if (!price || !val) { if (sb) sb.classList.remove('show'); return; }
   const [, , buyPRaw] = val.split('|');
   const total = Math.max(0, qty * price - disc);
-  const profit = qty * (price - (parseFloat(buyPRaw) || 0)) - disc;
+  const profit = total - qty * (parseFloat(buyPRaw) || 0);
   if (sb) sb.classList.add('show');
   const td = document.getElementById('saleTotDisp'); if (td) td.textContent = fmt(total);
   const pd = document.getElementById('saleProDisp'); if (pd) pd.textContent = fmt(profit);
 }
 
 async function submitSale() {
+  if (_saleInProgress) return;
   const combo = gv('saleProd'), sizeVal = gv('saleSize');
   const price = gn('salePrice'), qty = gi('saleQty') || 1, disc = gn('saleDisc');
   const payment = getSelPay('salePaySel'), cust = gv('saleCust'), note = gv('saleNote');
@@ -1191,6 +1204,8 @@ async function submitSale() {
   if (!combo) { toast('⚠️ Выбери товар', 'err'); return; }
   if (!sizeVal) { toast('⚠️ Выбери размер', 'err'); return; }
   if (!price) { toast('⚠️ Введи цену продажи', 'err'); return; }
+  if (disc < 0) { toast('⚠️ Скидка не может быть отрицательной', 'err'); return; }
+  if (disc > qty * price) { toast('⚠️ Скидка не может превышать сумму продажи', 'err'); return; }
 
   const [name, color] = combo.split('||');
   const [size, rowId, buyPRaw] = sizeVal.split('|');
@@ -1208,6 +1223,7 @@ async function submitSale() {
   const total = Math.max(0, qty * price - disc);
   const profit = qty * (price - buyPriceRaw) - disc;
 
+  _saleInProgress = true;
   const btn = document.getElementById('saleSubmitBtn');
   btn.disabled = true; btn.textContent = 'Сохраняем...';
 
@@ -1237,6 +1253,7 @@ async function submitSale() {
 
   const { data, error } = await SB.from('sales').insert([saleData]).select();
 
+  _saleInProgress = false;
   btn.disabled = false; btn.textContent = '✅ Подтвердить продажу';
 
   if (error) {
