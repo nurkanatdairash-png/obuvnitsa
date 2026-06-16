@@ -185,9 +185,10 @@ GRANT EXECUTE ON FUNCTION public.is_owner() TO authenticated;
 
 -- Anon grants — needed because the app uses code-based auth (no JWT), so
 -- all Supabase requests arrive as the anon role, not authenticated.
+-- DELETE deliberately excluded: see note above section 9a.
 GRANT USAGE ON SCHEMA public TO anon;
-GRANT SELECT, INSERT, DELETE ON public.products TO anon;
-GRANT SELECT, INSERT, DELETE ON public.sales    TO anon;
+GRANT SELECT, INSERT ON public.products TO anon;
+GRANT SELECT, INSERT ON public.sales    TO anon;
 
 
 -- ── 9a. ANON RLS POLICIES ────────────────────────────────
@@ -201,9 +202,15 @@ DROP POLICY IF EXISTS "anon_products_insert" ON public.products;
 CREATE POLICY "anon_products_insert"
   ON public.products FOR INSERT TO anon WITH CHECK (true);
 
-DROP POLICY IF EXISTS "anon_products_delete" ON public.products;
-CREATE POLICY "anon_products_delete"
-  ON public.products FOR DELETE TO anon USING (true);
+-- ⚠️ DELETE intentionally NOT granted to anon. With code-based auth, the
+-- DB cannot tell an "owner" anon request from a "seller" one — anyone who
+-- knows the public anon key (visible to anyone viewing the page source,
+-- since this is a public repo) would be able to delete ALL data with no
+-- login at all. This previously caused total data loss in production.
+-- Re-enable per-row deletes only once real Supabase Auth + is_owner() is
+-- wired up so RLS can actually verify who's asking.
+REVOKE DELETE ON public.products FROM anon;
+REVOKE DELETE ON public.sales    FROM anon;
 
 DROP POLICY IF EXISTS "anon_sales_select" ON public.sales;
 CREATE POLICY "anon_sales_select"
